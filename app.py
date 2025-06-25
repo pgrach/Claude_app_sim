@@ -303,13 +303,17 @@ if run_simulation:
         
         util_df = pd.DataFrame({
             'Fleet Size': results['fleet_sizes'],
-            'Average Utilization': results['avg_utilization'],
-            'Capacity Factor': results['capacity_factor']
+            'Average Utilization (%)': results['avg_utilization'],
+            'Capacity Factor (%)': results['capacity_factor']
         })
         
-        fig_util = px.line(util_df, x='Fleet Size', y=['Average Utilization', 'Capacity Factor'],
-                          title='Fleet Utilization Metrics')
-        fig_util.update_layout(height=300)
+        fig_util = px.line(util_df, x='Fleet Size', y=['Average Utilization (%)', 'Capacity Factor (%)'],
+                          title='Fleet Utilization Metrics', 
+                          color_discrete_map={
+                              'Average Utilization (%)': 'dodgerblue',
+                              'Capacity Factor (%)': 'mediumorchid'
+                          })
+        fig_util.update_layout(height=300, yaxis_title="Percentage (%)")
         st.plotly_chart(fig_util, use_container_width=True)
     
     # Detailed projections
@@ -321,7 +325,8 @@ if run_simulation:
         btc_data=btc_data,
         asic_specs=asic_specs,
         scenario_params=config['scenarios'][scenario],
-        years=projection_years
+        years=projection_years,
+        annual_opex=annual_opex
     )
     
     # Create projection table

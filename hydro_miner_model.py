@@ -301,9 +301,9 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         
     fleet_sizes_arr = np.array(fleet_sizes)
 
-    if n_simulations > 500:
+    if n_simulations > 2000:
         st.warning(f"Reducing simulations from {n_simulations} to 500 for faster processing")
-        n_simulations = 500
+        n_simulations = 2000
 
     discount_rate = 0.15
     
@@ -427,7 +427,7 @@ def calculate_optimal_fleet(results):
         'zero_production_days': 36  # Based on hydro stats
     }
 
-def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenario_params, years):
+def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenario_params, years, annual_opex):
     """Generate detailed projections for a specific fleet size."""
     projections = {
         'yearly_data': [],
@@ -471,7 +471,6 @@ def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenari
         
         # Financial calculations
         annual_revenue = annual_btc * year_price
-        annual_opex = scenario_params.get('annual_opex', 50000)
         annual_profit = annual_revenue - annual_opex
         cumulative_cash += annual_profit
         
