@@ -55,7 +55,18 @@ with st.sidebar:
     projection_years = st.number_input("Projection Years", value=config['simulation']['projection_years'], min_value=1, max_value=5)
     
     st.subheader("Economic Scenarios")
-    scenario = st.selectbox("Scenario", options=list(config['scenarios'].keys()))
+    scenario_key = st.selectbox(
+        "Scenario",
+        options=list(config['scenarios'].keys()),
+        format_func=lambda k: config['scenarios'][k]['name']
+    )
+    selected_scenario = config['scenarios'][scenario_key]
+
+    with st.expander("View Scenario Details", expanded=True):
+        st.markdown(f"*{selected_scenario['description']}*")
+        col1, col2 = st.columns(2)
+        col1.metric("Annual Difficulty Growth", f"{selected_scenario['difficulty_growth_annual']:.1%}")
+        col2.metric("Annual Price Change", f"{selected_scenario['price_change_annual']:.1%}")
     
     run_simulation = st.button("🚀 Run Optimization", type="primary")
 
@@ -208,7 +219,7 @@ if run_simulation:
             annual_opex=annual_opex,
             n_simulations=n_simulations,
             fleet_step=fleet_step,
-            scenario_params=config['scenarios'][scenario],
+            scenario_params=selected_scenario,
             projection_years=projection_years
         )
         
@@ -324,7 +335,7 @@ if run_simulation:
         hydro_stats=hydro_stats,
         btc_data=btc_data,
         asic_specs=asic_specs,
-        scenario_params=config['scenarios'][scenario],
+        scenario_params=selected_scenario,
         years=projection_years,
         annual_opex=annual_opex
     )
@@ -348,7 +359,7 @@ if run_simulation:
     # Summary report
     with st.expander("📋 Executive Summary", expanded=True):
         st.markdown(f"""
-        ### Optimization Results for {scenario.title()} Scenario
+        ### Optimization Results for {selected_scenario['name']} Scenario
         
         **Recommended Configuration:**
         - Optimal Fleet Size: **{optimal['n_asics']} ASICs**
