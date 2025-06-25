@@ -35,7 +35,7 @@ def load_btc_data(price_file, difficulty_file):
     btc_df = pd.merge(price_df, diff_df, on='Date', how='inner')
     
     # Calculate mining economics
-    btc_df['block_reward'] = btc_df['Date'].apply(get_block_reward)
+    btc_df['block_reward'] = get_block_reward(btc_df['Date'])
     btc_df['btc_per_th_day'] = (1e12 * 86400 * btc_df['block_reward']) / (btc_df['Difficulty'] * 2**32)
     btc_df['revenue_per_th_day'] = btc_df['btc_per_th_day'] * btc_df['Close']
     
@@ -56,27 +56,34 @@ def load_btc_data(price_file, difficulty_file):
         'difficulty_growth_annual': last_year['difficulty_growth_30d'].mean() * 12,
         'price_volatility_annual': last_year['Close'].pct_change().std() * np.sqrt(365),
         'historical_data': btc_df[['Date', 'Close', 'Difficulty', 'revenue_per_th_day']].rename(
-            columns={'Date': 'date', 'Close': 'price', 'Difficulty': 'difficulty'}
-        )
+            columns={'Date': 'date', 'Close': 'price', 'Difficulty': 'difficulty'})
     }
 
-def get_block_reward(date):
-    """Get Bitcoin block reward for a given date."""
-    if isinstance(date, str):
-        date = pd.to_datetime(date)
+def get_block_reward(dates):
+    """Get Bitcoin block reward for a given date or series of dates (vectorized)."""
+    date_series = pd.to_datetime(dates)
     
-    if date < pd.to_datetime('2012-11-28'):
-        return 50
-    elif date < pd.to_datetime('2016-07-09'):
-        return 25
-    elif date < pd.to_datetime('2020-05-11'):
-        return 12.5
-    elif date < pd.to_datetime('2024-04-20'):
-        return 6.25
-    elif date < pd.to_datetime('2028-04-01'):  # Approximate next halving
-        return 3.125
-    else:
-        return 1.5625
+    # Define halving dates and corresponding rewards
+    halving_dates = [
+        pd.to_datetime('2012-11-28'),
+        pd.to_datetime('2016-07-09'),
+        pd.to_datetime('2020-05-11'),
+        pd.to_datetime('2024-04-20'),
+        pd.to_datetime('2028-04-01')  # Approximate next halving
+    ]
+    rewards = [50, 25, 12.5, 6.25, 3.125, 1.5625]
+    
+    # Create conditions for np.select
+    conditions = [
+        date_series < halving_dates[0],
+        (date_series >= halving_dates[0]) & (date_series < halving_dates[1]),
+        (date_series >= halving_dates[1]) & (date_series < halving_dates[2]),
+        (date_series >= halving_dates[2]) & (date_series < halving_dates[3]),
+        (date_series >= halving_dates[3]) & (date_series < halving_dates[4])
+    ]
+    
+    # Use np.select for efficient conditional logic
+    return np.select(conditions, rewards[:-1], default=rewards[-1])
 
 def analyze_power_profile(hydro_df):
     """Analyze hydroelectric power availability patterns."""
@@ -165,86 +172,116 @@ def calculate_mining_revenue(hashrate_th, power_available_kw, asic_power_kw, dif
     # Calculate BTC mined
     btc_per_day = (effective_hashrate * 1e12 * 86400 * block_reward) / (difficulty * 2**32)
     revenue = btc_per_day * btc_price
-    
     return revenue, btc_per_day, power_used
 
+def _precompute_simulation_parameters(projection_years, btc_data, scenario_params, sim_seed):
+    """Pre-computes daily price, difficulty, and block rewards for the entire simulation period."""
+    np.random.seed(sim_seed)
+    
+    n_days = projection_years * 365
+    n_months = projection_years * 12
+    
+    # Scenario parameters
+    diff_growth_monthly = (1 + scenario_params['difficulty_growth_annual'])**(1/12)
+    price_trend_monthly = scenario_params['price_change_annual'] / 12
+    price_vol_monthly = btc_data['price_volatility_annual'] / np.sqrt(12)
+    
+    # --- Generate monthly multipliers ---
+    monthly_diff_multipliers = np.cumprod(np.insert(np.full(n_months, diff_growth_monthly), 0, 1))[:-1]
+    
+    monthly_shocks = np.random.normal(price_trend_monthly, price_vol_monthly, n_months)
+    monthly_price_multipliers = np.cumprod(np.insert(1 + monthly_shocks, 0, 1))[:-1]
+
+    # --- Map days to months for accurate daily values ---
+    base_date = pd.to_datetime(datetime.now())
+    dates = base_date + pd.to_timedelta(np.arange(n_days), unit='d')
+    
+    # Calculate month index for each day (0 for first month, 1 for second, etc.)
+    month_indices = (dates.year - base_date.year) * 12 + (dates.month - base_date.month)
+    month_indices = np.minimum(month_indices, n_months - 1) # Ensure indices are within bounds
+
+    # --- Vectorized Difficulty and Price Calculation using month mapping ---
+    daily_diff_multipliers = monthly_diff_multipliers[month_indices]
+    daily_difficulty = btc_data['current_difficulty'] * daily_diff_multipliers
+
+    daily_price_multipliers = monthly_price_multipliers[month_indices]
+    daily_price = btc_data['current_price'] * daily_price_multipliers
+    np.maximum(daily_price, 1000, out=daily_price) # Floor price
+
+    # --- Vectorized Block Reward Calculation ---
+    daily_block_reward = get_block_reward(dates)
+    
+    return daily_difficulty, daily_price, daily_block_reward
+
 def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate):
-    """Helper function to run a single vectorized simulation for all fleet sizes."""
+    """
+    Helper function to run a single vectorized simulation for all fleet sizes.
+    This version is optimized to remove daily loops and use matrix operations.
+    """
     # Extract ASIC parameters
     asic_hashrate = asic_specs['hash_rate_th']
     asic_power_kw = asic_specs['power_consumption_kw']
     asic_price = asic_specs['unit_price']
+    n_days = projection_years * 365
 
-    # Scenario parameters
-    diff_growth = scenario_params['difficulty_growth_annual']
-    price_trend = scenario_params['price_change_annual']
-    price_volatility = btc_data['price_volatility_annual']
+    # 1. Pre-computation of Time-Dependent Variables
+    daily_difficulty, daily_price, daily_block_reward = _precompute_simulation_parameters(
+        projection_years, btc_data, scenario_params, sim_seed
+    )
+    simulated_power = simulate_power_availability(hydro_stats, n_days, seed=sim_seed)
 
-    # Simulation state
-    np.random.seed(sim_seed)
+    # 2. Full Vectorization Across Days AND Fleet Sizes
+    # Reshape daily arrays for broadcasting against fleet arrays
+    simulated_power_col = simulated_power[:, np.newaxis]
+    daily_difficulty_col = daily_difficulty[:, np.newaxis]
+    daily_price_col = daily_price[:, np.newaxis]
+    daily_block_reward_col = daily_block_reward[:, np.newaxis]
+
+    # Calculate fleet requirements (row vector)
+    fleet_power_req_row = fleet_sizes_arr * asic_power_kw
+    fleet_hashrate_row = fleet_sizes_arr * asic_hashrate
+
+    # 3. Efficient Power Masking and Matrix-Based Calculations
+    # Use a mask for days with power
+    power_mask = simulated_power > 0
+    
+    # Calculate available power for each fleet size (n_days, n_fleets)
+    fleet_power_avail = np.minimum(simulated_power_col, fleet_power_req_row)
+    
+    # Calculate throttle percentage for each fleet on each day
+    throttle = np.divide(fleet_power_avail, fleet_power_req_row, 
+                         out=np.zeros_like(fleet_power_avail), 
+                         where=fleet_power_req_row > 0)
+
+    # Calculate effective hashrate based on throttling
+    effective_hashrate = fleet_hashrate_row * throttle
+    
+    # Calculate daily BTC mined for each fleet
+    btc_mined = (effective_hashrate * 1e12 * 86400 * daily_block_reward_col) / (daily_difficulty_col * 2**32)
+    
+    # Calculate daily revenue
+    daily_revenue = btc_mined * daily_price_col
+    daily_revenue[~power_mask, :] = 0
+    
+    # Aggregate daily revenues into annual cash flows
+    annual_revenue = daily_revenue.reshape(projection_years, 365, -1).sum(axis=1)
+    
+    # Calculate final cash flows including investment and opex
     initial_investment = -fleet_sizes_arr * asic_price
     cash_flows = np.zeros((projection_years + 1, len(fleet_sizes_arr)))
     cash_flows[0, :] = initial_investment
-    
-    total_power_used = np.zeros(len(fleet_sizes_arr))
-    days_operational = np.zeros(len(fleet_sizes_arr))
-    total_effective_hashrate = np.zeros(len(fleet_sizes_arr))
-
-    # Pre-generate power data
-    simulated_power = simulate_power_availability(hydro_stats, 365 * projection_years, seed=sim_seed)
-
-    # Current market conditions
-    current_difficulty = btc_data['current_difficulty']
-    current_price = btc_data['current_price']
-
-    # Simulate each day
-    for day in range(365 * projection_years):
-        year_idx = day // 365
-        
-        # Monthly market updates
-        if day % 30 == 0:
-            current_difficulty *= (1 + diff_growth / 12)
-            monthly_return = price_trend / 12 + price_volatility / np.sqrt(12) * np.random.normal()
-            current_price *= (1 + monthly_return)
-            current_price = max(current_price, 1000)
-
-        power_kw_today = simulated_power[day]
-        if power_kw_today <= 0:
-            continue
-
-        # Halving check
-        current_date = datetime.now() + timedelta(days=day)
-        block_reward = get_block_reward(current_date)
-
-        # Vectorized fleet calculations
-        fleet_power_req = fleet_sizes_arr * asic_power_kw
-        fleet_power_avail = np.minimum(power_kw_today, fleet_power_req)
-        
-        throttle = np.divide(fleet_power_avail, fleet_power_req, out=np.zeros_like(fleet_power_avail), where=fleet_power_req>0)
-        effective_hashrate = fleet_sizes_arr * asic_hashrate * throttle
-        total_effective_hashrate += effective_hashrate
-        
-        power_used_today = fleet_power_avail
-        
-        btc_mined = (effective_hashrate * 1e12 * 86400 * block_reward) / (current_difficulty * 2**32)
-        daily_revenue = btc_mined * current_price
-
-        cash_flows[year_idx + 1, :] += daily_revenue
-        total_power_used += power_used_today
-        days_operational[power_used_today > 0] += 1
-
-    # Annual Opex
-    for year in range(projection_years):
-        cash_flows[year + 1, :] -= annual_opex
+    cash_flows[1:, :] = annual_revenue - annual_opex
 
     # Calculate NPV for all fleet sizes
     discounts = np.array([(1 + discount_rate)**i for i in range(projection_years + 1)])
     npv = np.sum(cash_flows / discounts[:, np.newaxis], axis=0)
-    
-    avg_utilization = (days_operational / (projection_years * 365)) * 100
-    
-    return npv, cash_flows, avg_utilization, total_effective_hashrate
 
+    # Calculate utilization and hashrate metrics
+    days_operational = (fleet_power_avail > 0).sum(axis=0)
+    avg_utilization = (days_operational / n_days) * 100 if n_days > 0 else 0
+    total_effective_hashrate = effective_hashrate.sum(axis=0)
+
+    return npv, cash_flows, avg_utilization, total_effective_hashrate
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
                              n_simulations, fleet_step, scenario_params, projection_years):
