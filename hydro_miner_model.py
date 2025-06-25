@@ -213,7 +213,7 @@ def _precompute_simulation_parameters(projection_years, btc_data, scenario_param
     
     return daily_difficulty, daily_price, daily_block_reward
 
-def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate):
+def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate, pool_fee):
     """
     Helper function to run a single vectorized simulation for all fleet sizes.
     This version is optimized to remove daily loops and use matrix operations.
@@ -260,7 +260,7 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     btc_mined = (effective_hashrate * 1e12 * 86400 * daily_block_reward_col) / (daily_difficulty_col * 2**32)
     
     # Calculate daily revenue
-    daily_revenue = btc_mined * daily_price_col
+    daily_revenue = (btc_mined * daily_price_col) * (1 - pool_fee)
     daily_revenue[~power_mask, :] = 0
     
     # Aggregate daily revenues into annual cash flows
@@ -284,7 +284,7 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     return npv, cash_flows, avg_utilization, total_effective_hashrate
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
-                             n_simulations, fleet_step, scenario_params, projection_years):
+                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee):
     """Run Monte Carlo simulation for different fleet sizes."""
     import streamlit as st
 
@@ -321,7 +321,8 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
             hydro_stats=hydro_stats,
             projection_years=projection_years,
             annual_opex=annual_opex,
-            discount_rate=discount_rate
+            discount_rate=discount_rate,
+            pool_fee=pool_fee
         ) for i in range(n_simulations)
     )
 
@@ -427,7 +428,7 @@ def calculate_optimal_fleet(results):
         'zero_production_days': 36  # Based on hydro stats
     }
 
-def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenario_params, years, annual_opex):
+def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenario_params, years, annual_opex, pool_fee):
     """Generate detailed projections for a specific fleet size."""
     projections = {
         'yearly_data': [],
@@ -470,7 +471,7 @@ def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenari
         annual_btc = btc_per_day * 365 * uptime_factor
         
         # Financial calculations
-        annual_revenue = annual_btc * year_price
+        annual_revenue = (annual_btc * year_price) * (1 - pool_fee)
         annual_profit = annual_revenue - annual_opex
         cumulative_cash += annual_profit
         

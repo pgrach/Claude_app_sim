@@ -46,6 +46,16 @@ with st.sidebar:
     asic_power = st.number_input("Power per TH (W)", value=config['asic']['watts_per_th'], min_value=1.0)
     asic_price = st.number_input("Price per TH ($)", value=config['asic']['price_usd_per_th'], min_value=1.0)
     
+    st.subheader("Financial Assumptions")
+    pool_fee = st.number_input(
+        "Mining Pool Fee (%)",
+        value=config['financial']['pool_fee_percent'] * 100,
+        min_value=0.0,
+        max_value=10.0,
+        step=0.1,
+        format="%.1f"
+    ) / 100.0
+
     st.subheader("Operating Costs")
     annual_opex = st.number_input("Annual Operating Costs ($)", value=config['operating_costs']['annual_usd'], min_value=0)
     
@@ -220,7 +230,8 @@ if run_simulation:
             n_simulations=n_simulations,
             fleet_step=fleet_step,
             scenario_params=selected_scenario,
-            projection_years=projection_years
+            projection_years=projection_years,
+            pool_fee=pool_fee
         )
         
         st.session_state.simulation_results = simulation_results
@@ -352,7 +363,8 @@ if run_simulation:
         asic_specs=asic_specs,
         scenario_params=selected_scenario,
         years=projection_years,
-        annual_opex=annual_opex
+        annual_opex=annual_opex,
+        pool_fee=pool_fee
     )
     
     # Create projection table
