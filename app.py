@@ -296,18 +296,33 @@ if run_simulation:
     
     with col1:
         st.subheader("Risk Metrics")
-        
+
         risk_df = pd.DataFrame({
             'Fleet Size': results['fleet_sizes'],
-            'Probability of Loss': results['prob_loss'],
+            'Probability of Loss (%)': results['prob_loss'] * 100,
             'Value at Risk (95%)': results['var_95'],
             'Sharpe Ratio': results['sharpe_ratio']
         })
-        
-        fig_risk = px.line(risk_df, x='Fleet Size', y='Probability of Loss',
-                          title='Probability of Loss by Fleet Size')
-        fig_risk.update_layout(height=300)
-        st.plotly_chart(fig_risk, use_container_width=True)
+
+        # Format for display
+        display_df = risk_df.copy()
+        display_df['Probability of Loss (%)'] = display_df['Probability of Loss (%)'].map('{:.1f}%'.format)
+        display_df['Value at Risk (95%)'] = display_df['Value at Risk (95%)'].map('${:,.0f}'.format)
+        display_df['Sharpe Ratio'] = display_df['Sharpe Ratio'].map('{:.2f}'.format)
+
+        st.dataframe(display_df.set_index('Fleet Size'))
+
+        # Add VaR chart
+        fig_var = px.line(risk_df, x='Fleet Size', y='Value at Risk (95%)',
+                          title='Value at Risk (95%) by Fleet Size')
+        fig_var.update_layout(height=250, yaxis_title="VaR ($)")
+        st.plotly_chart(fig_var, use_container_width=True)
+
+        # Add Sharpe Ratio chart
+        fig_sharpe = px.line(risk_df, x='Fleet Size', y='Sharpe Ratio',
+                             title='Sharpe Ratio by Fleet Size', color_discrete_sequence=['green'])
+        fig_sharpe.update_layout(height=250, yaxis_title="Ratio")
+        st.plotly_chart(fig_sharpe, use_container_width=True)
     
     with col2:
         st.subheader("Utilization Analysis")
