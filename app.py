@@ -25,6 +25,16 @@ def load_config():
     with open('config.yaml', 'r') as file:
         return yaml.safe_load(file)
 
+# Load data functions
+@st.cache_data
+def get_hydro_analysis():
+    hydro_data = load_hydro_data('hydro_flow.xlsx')
+    return analyze_power_profile(hydro_data)
+
+@st.cache_data
+def get_btc_data():
+    return load_btc_data('btc_price.csv', 'btc_difficulty.csv')
+
 # Initialize session state
 if 'simulation_results' not in st.session_state:
     st.session_state.simulation_results = None
@@ -37,8 +47,9 @@ st.markdown("Optimize ASIC fleet size for run-of-river hydroelectric power with 
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # Load default config
+    # Load default config and data
     config = load_config()
+    btc_data = get_btc_data()
     
     st.subheader("ASIC Specifications")
     asic_model = st.text_input("Model", value=config['asic']['model'])
@@ -99,15 +110,26 @@ with st.sidebar:
             step=1.0,
             format="%.1f%%"
         ) / 100.0
+        custom_price_volatility = st.slider(
+            "Annual Price Volatility (%)",
+            min_value=0.0,
+            max_value=200.0,
+            value=btc_data['price_volatility_annual'] * 100,
+            step=1.0,
+            format="%.1f%%"
+        ) / 100.0
         selected_scenario['difficulty_growth_annual'] = custom_difficulty_growth
         selected_scenario['price_change_annual'] = custom_price_change
+        selected_scenario['price_volatility_annual'] = custom_price_volatility
 
     with st.expander("View Scenario Details", expanded=True):
         st.markdown(f"*{selected_scenario['description']}*")
         col1, col2 = st.columns(2)
         col1.metric("Annual Difficulty Growth", f"{selected_scenario['difficulty_growth_annual']:.1%}")
         col2.metric("Annual Price Change", f"{selected_scenario['price_change_annual']:.1%}")
-    
+        if scenario_key == 'custom':
+            st.metric("Annual Price Volatility", f"{selected_scenario.get('price_volatility_annual', btc_data['price_volatility_annual']):.1%}")
+
     run_simulation = st.button("🚀 Run Optimization", type="primary")
 
 # Main content area
@@ -115,13 +137,6 @@ col1, col2 = st.columns([3, 2])
 
 with col1:
     st.header("📊 Power Profile Analysis")
-    
-    # Load and analyze hydro data
-    @st.cache_data
-    def get_hydro_analysis():
-        hydro_data = load_hydro_data('hydro_flow.xlsx')
-        return analyze_power_profile(hydro_data)
-    
     hydro_stats = get_hydro_analysis()
     
     # Display power statistics
@@ -182,13 +197,6 @@ with col1:
 
 with col2:
     st.header("💰 Mining Economics")
-    
-    # Load BTC data
-    @st.cache_data
-    def get_btc_data():
-        return load_btc_data('btc_price.csv', 'btc_difficulty.csv')
-    
-    btc_data = get_btc_data()
     
     # Current mining metrics
     st.subheader("Current Mining Metrics")
