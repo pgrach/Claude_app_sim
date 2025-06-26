@@ -185,6 +185,10 @@ def _precompute_simulation_parameters(projection_years, btc_data, scenario_param
     diff_growth_monthly = (1 + scenario_params['difficulty_growth_annual'])**(1/12)
     price_trend_monthly = scenario_params['price_change_annual'] / 12
     price_vol_monthly = btc_data['price_volatility_annual'] / np.sqrt(12)
+
+    # For custom scenarios, make price changes deterministic by removing volatility
+    if scenario_params.get('name') == 'Custom':
+        price_vol_monthly = 0
     
     # --- Generate monthly multipliers ---
     monthly_diff_multipliers = np.cumprod(np.insert(np.full(n_months, diff_growth_monthly), 0, 1))[:-1]

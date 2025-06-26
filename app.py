@@ -70,7 +70,28 @@ with st.sidebar:
         options=list(config['scenarios'].keys()),
         format_func=lambda k: config['scenarios'][k]['name']
     )
-    selected_scenario = config['scenarios'][scenario_key]
+    selected_scenario = config['scenarios'][scenario_key].copy()
+
+    if scenario_key == 'custom':
+        st.markdown("**Custom Scenario Parameters**")
+        custom_difficulty_growth = st.slider(
+            "Annual Difficulty Growth (%)",
+            min_value=-50.0,
+            max_value=150.0,
+            value=selected_scenario['difficulty_growth_annual'] * 100,
+            step=1.0,
+            format="%.1f%%"
+        ) / 100.0
+        custom_price_change = st.slider(
+            "Annual Price Change (%)",
+            min_value=-50.0,
+            max_value=150.0,
+            value=selected_scenario['price_change_annual'] * 100,
+            step=1.0,
+            format="%.1f%%"
+        ) / 100.0
+        selected_scenario['difficulty_growth_annual'] = custom_difficulty_growth
+        selected_scenario['price_change_annual'] = custom_price_change
 
     with st.expander("View Scenario Details", expanded=True):
         st.markdown(f"*{selected_scenario['description']}*")

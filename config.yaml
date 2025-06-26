@@ -36,6 +36,12 @@ scenarios:
     difficulty_growth_annual: 0.50  # 50% annual growth
     price_change_annual: 0.50       # 50% annual growth
     description: "Strong adoption and institutional investment"
+    
+  custom:
+    name: "Custom"
+    difficulty_growth_annual: 0.00  # Placeholder, user will override
+    price_change_annual: 0.00       # Placeholder, user will override
+    description: "User-defined custom scenario"
 
 # Financial Parameters
 financial:
