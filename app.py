@@ -242,7 +242,7 @@ if run_simulation:
     # Optimal fleet recommendation
     st.subheader("🏆 Optimal Fleet Size")
     
-    optimal = calculate_optimal_fleet(results)
+    optimal = calculate_optimal_fleet(results, hydro_stats, asic_specs)
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:

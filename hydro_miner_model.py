@@ -390,40 +390,70 @@ def calculate_actual_hashrate(cash_flows, n_asics, asic_hashrate, asic_price):
     # Rough estimate assuming average conditions
     return total_revenue / (asic_price * n_asics) * asic_hashrate * 365
 
-def calculate_optimal_fleet(results):
-    """Determine optimal fleet size based on simulation results."""
-    # Find fleet size with maximum expected NPV
+def calculate_optimal_fleet(results, hydro_stats, asic_specs):
+    """Determine optimal fleet size based on simulation results, considering power constraints."""
+    if not results or not results.get('fleet_sizes'):
+        return {
+            'n_asics': 0,
+            'recommendation': "No simulation data available to determine optimal fleet.",
+            'risk_assessment': "N/A"
+        }
+
+    # Calculate the practical limit of ASICs based on maximum installed power
+    max_power_limit_asics = int(hydro_stats['max_power_kw'] / asic_specs['power_consumption_kw'])
+
+    # Find fleet size with maximum expected NPV from the simulation
     max_npv_idx = np.argmax(results['npv_expected'])
-    optimal_size = results['fleet_sizes'][max_npv_idx]
+    optimal_size_raw = results['fleet_sizes'][max_npv_idx]
+
+    # The final recommended size is the smaller of the theoretical optimum and the practical power limit
+    recommended_size = min(optimal_size_raw, max_power_limit_asics)
     
-    # Risk-adjusted recommendation
-    sharpe_ratios = results['sharpe_ratio']
-    max_sharpe_idx = np.argmax(sharpe_ratios)
-    risk_adjusted_size = results['fleet_sizes'][max_sharpe_idx]
-    
-    # Determine recommendation
-    if results['prob_loss'][max_npv_idx] > 0.3:
-        risk_assessment = "High risk - significant probability of loss"
-        recommendation = f"Consider more conservative fleet size of {risk_adjusted_size} ASICs for better risk-adjusted returns"
-    elif results['prob_loss'][max_npv_idx] > 0.1:
-        risk_assessment = "Moderate risk - acceptable for most investors"
-        recommendation = f"Proceed with {optimal_size} ASICs, monitor market conditions closely"
+    # Find the index corresponding to the recommended size to pull other metrics
+    if recommended_size in results['fleet_sizes']:
+        recommended_idx = results['fleet_sizes'].index(recommended_size)
     else:
-        risk_assessment = "Low risk - strong probability of positive returns"
-        recommendation = f"Optimal configuration of {optimal_size} ASICs offers best returns"
+        # If the capped size is not a simulated step, find the closest one that is smaller
+        feasible_sizes = [s for s in results['fleet_sizes'] if s <= recommended_size]
+        if not feasible_sizes:
+            return {
+                'n_asics': 0,
+                'recommendation': "No feasible fleet size found within power limits.",
+                'risk_assessment': "Error"
+            }
+        recommended_size = max(feasible_sizes)
+        recommended_idx = results['fleet_sizes'].index(recommended_size)
+
+    # Determine recommendation text based on the new logic
+    if recommended_size < optimal_size_raw:
+        risk_assessment = "Power-Constrained Optimum"
+        recommendation = (
+            f"The recommended fleet of **{recommended_size} ASICs** is constrained by the maximum available power ({hydro_stats['max_power_kw']:.0f} kW). "
+            f"While simulations show a theoretical peak NPV at {optimal_size_raw} ASICs, operating beyond the site's maximum power capacity is not possible."
+        )
+    else:
+        if results['prob_loss'][recommended_idx] > 0.3:
+            risk_assessment = "High Risk"
+            recommendation = f"The optimal fleet of **{recommended_size} ASICs** carries a high risk with a >30% chance of loss. Consider a smaller, less risky fleet."
+        elif results['prob_loss'][recommended_idx] > 0.1:
+            risk_assessment = "Moderate Risk"
+            recommendation = f"Proceed with the optimal fleet of **{recommended_size} ASICs**, but monitor market conditions closely due to moderate risk."
+        else:
+            risk_assessment = "Low Risk"
+            recommendation = f"The optimal configuration of **{recommended_size} ASICs** offers the best risk-adjusted returns."
     
     return {
-        'n_asics': optimal_size,
-        'expected_npv': results['npv_expected'][max_npv_idx],
-        'npv_p10': results['npv_p10'][max_npv_idx],
-        'npv_p90': results['npv_p90'][max_npv_idx],
-        'irr': results['irr_expected'][max_npv_idx],
-        'payback_months': results['payback_months'][max_npv_idx],
-        'prob_loss': results['prob_loss'][max_npv_idx],
-        'utilization': results['avg_utilization'][max_npv_idx],
+        'n_asics': recommended_size,
+        'expected_npv': results['npv_expected'][recommended_idx],
+        'npv_p10': results['npv_p10'][recommended_idx],
+        'npv_p90': results['npv_p90'][recommended_idx],
+        'irr': results['irr_expected'][recommended_idx],
+        'payback_months': results['payback_months'][recommended_idx],
+        'prob_loss': results['prob_loss'][recommended_idx],
+        'utilization': results['avg_utilization'][recommended_idx],
         'risk_assessment': risk_assessment,
         'recommendation': recommendation,
-        'full_power_percent': 50,  # Placeholder - would calculate from detailed simulation
+        'full_power_percent': 50,  # Placeholder
         'avg_throttle': 75,  # Placeholder
         'zero_production_days': 36  # Based on hydro stats
     }

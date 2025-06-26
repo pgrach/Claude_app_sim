@@ -49,7 +49,7 @@ power:
 # Financial Parameters
 financial:
   btc_transaction_fee_percent: 0.07  # Assume 7% additional from fees
-  : 0.02             # 2% mining pool fee
+  pool_fee_percent: 0.02             # 2% mining pool fee
   asic_degradation_annual: 0.05      # 5% efficiency loss per year
   
 # Risk Parameters
