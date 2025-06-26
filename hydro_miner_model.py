@@ -266,6 +266,18 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     # Aggregate daily revenues into annual cash flows
     annual_revenue = daily_revenue.reshape(projection_years, 365, -1).sum(axis=1)
     
+    # --- Additions for detailed projection ---
+    annual_btc_mined = btc_mined.reshape(projection_years, 365, -1).sum(axis=1)
+    annual_avg_price = daily_price.reshape(projection_years, 365).mean(axis=1)
+    annual_avg_difficulty = daily_difficulty.reshape(projection_years, 365).mean(axis=1)
+    
+    annual_details = {
+        'revenue': annual_revenue,
+        'btc_mined': annual_btc_mined,
+        'avg_price': annual_avg_price,
+        'avg_difficulty': annual_avg_difficulty
+    }
+    
     # Calculate final cash flows including investment and opex
     initial_investment = -fleet_sizes_arr * asic_price
     cash_flows = np.zeros((projection_years + 1, len(fleet_sizes_arr)))
@@ -281,7 +293,7 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     avg_utilization = (days_operational / n_days) * 100 if n_days > 0 else 0
     total_effective_hashrate = effective_hashrate.sum(axis=0)
 
-    return npv, cash_flows, avg_utilization, total_effective_hashrate
+    return npv, cash_flows, avg_utilization, total_effective_hashrate, annual_details
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
                              n_simulations, fleet_step, scenario_params, projection_years, pool_fee):
@@ -333,6 +345,29 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
     all_cash_flows = np.array([res[1] for res in results_list])
     all_utilizations = np.array([res[2] for res in results_list])
     all_total_effective_hashrates = np.array([res[3] for res in results_list])
+    all_annual_details = [res[4] for res in results_list]
+
+    # --- New logic: Find cash flows from the median (P50) simulation ---
+    median_npvs = np.percentile(all_npvs, 50, axis=0)
+    median_simulation_cash_flows = []
+    median_simulation_details = []
+    for i in range(len(fleet_sizes)):
+        npvs_for_fleet = all_npvs[:, i]
+        # Find the index of the simulation with the NPV closest to the median
+        median_sim_idx = np.argmin(np.abs(npvs_for_fleet - median_npvs[i]))
+        # Get the cash flow from that specific simulation
+        median_cash_flow = all_cash_flows[median_sim_idx, :, i]
+        median_simulation_cash_flows.append(median_cash_flow.tolist())
+        
+        # Get details from that simulation
+        details_for_fleet = {
+            'revenue': all_annual_details[median_sim_idx]['revenue'][:, i],
+            'btc_mined': all_annual_details[median_sim_idx]['btc_mined'][:, i],
+            'avg_price': all_annual_details[median_sim_idx]['avg_price'],
+            'avg_difficulty': all_annual_details[median_sim_idx]['avg_difficulty'],
+        }
+        median_simulation_details.append(details_for_fleet)
+    # --- End of new logic ---
 
     # Aggregate results
     mean_total_effective_hashrate = np.mean(all_total_effective_hashrates, axis=0)
@@ -343,6 +378,7 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         'fleet_sizes': fleet_sizes,
         'npv_expected': np.mean(all_npvs, axis=0),
         'npv_p10': np.percentile(all_npvs, 10, axis=0),
+        'npv_p50': median_npvs,
         'npv_p90': np.percentile(all_npvs, 90, axis=0),
         'prob_loss': np.mean(all_npvs < 0, axis=0),
         'var_95': -np.percentile(all_npvs, 5, axis=0),
@@ -350,7 +386,9 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         'avg_utilization': np.mean(all_utilizations, axis=0),
         'irr_expected': [],
         'payback_months': [],
-        'capacity_factor': capacity_factor
+        'capacity_factor': capacity_factor,
+        'median_simulation_cash_flows': median_simulation_cash_flows,
+        'median_simulation_details': median_simulation_details
     }
 
     # Simplified IRR and Payback
@@ -458,65 +496,59 @@ def calculate_optimal_fleet(results, hydro_stats, asic_specs):
         'zero_production_days': 36  # Based on hydro stats
     }
 
-def project_mining_economics(n_asics, hydro_stats, btc_data, asic_specs, scenario_params, years, annual_opex, pool_fee):
-    """Generate detailed projections for a specific fleet size."""
-    projections = {
-        'yearly_data': [],
-        'total_btc_mined': 0,
-        'total_revenue': 0,
-        'total_profit': 0
+def project_mining_economics(median_details_data, n_asics, asic_price, annual_opex, projection_years):
+    """
+    Generate a detailed projection table from a specific median simulation run.
+    """
+    if not median_details_data:
+        return pd.DataFrame(), {}
+
+    initial_investment = n_asics * asic_price
+    
+    # Create a DataFrame for years 1 to N
+    df_years = pd.DataFrame({
+        'Year': range(1, projection_years + 1),
+        'BTC Mined': median_details_data['btc_mined'],
+        'Revenue': median_details_data['revenue'],
+        'Operating Costs': annual_opex,
+        'Avg BTC Price': median_details_data['avg_price'],
+        'Avg Difficulty': median_details_data['avg_difficulty'],
+    })
+    df_years['Net Income'] = df_years['Revenue'] - df_years['Operating Costs']
+    
+    # Create the initial investment row (Year 0)
+    df_invest = pd.DataFrame({
+        'Year': [0], 'BTC Mined': [np.nan], 'Revenue': [np.nan], 
+        'Operating Costs': [np.nan], 'Net Income': [np.nan], 
+        'Cumulative Cash Flow': [-initial_investment], 
+        'Avg BTC Price': [np.nan], 'Avg Difficulty': [np.nan]
+    })
+    
+    # Calculate cumulative cash flow for years 1 to N
+    df_years['Cumulative Cash Flow'] = -initial_investment + df_years['Net Income'].cumsum()
+    
+    # Combine investment row with the rest of the data
+    df = pd.concat([df_invest, df_years], ignore_index=True)
+    
+    # Calculate Annual Cash Flow for NPV verification
+    df['Annual Cash Flow'] = df['Net Income']
+    df.loc[0, 'Annual Cash Flow'] = -initial_investment
+    discount_rate = 0.15
+    df['Discounted Cash Flow'] = df['Annual Cash Flow'] / ((1 + discount_rate) ** df['Year'])
+    npv = df['Discounted Cash Flow'].sum()
+
+    # Create summary
+    summary = {
+        'total_btc_mined': df['BTC Mined'].sum(),
+        'total_revenue': df['Revenue'].sum(),
+        'total_profit': df['Cumulative Cash Flow'].iloc[-1],
+        'npv': npv
     }
+
+    # Select and reorder columns for display
+    display_cols = [
+        'Year', 'BTC Mined', 'Revenue', 'Operating Costs', 'Net Income', 
+        'Cumulative Cash Flow', 'Avg BTC Price', 'Avg Difficulty'
+    ]
     
-    # Starting conditions
-    current_difficulty = btc_data['current_difficulty']
-    current_price = btc_data['current_price']
-    
-    # Annual parameters
-    diff_growth = scenario_params['difficulty_growth_annual']
-    price_trend = scenario_params['price_change_annual']
-    
-    cumulative_cash = -n_asics * asic_specs['unit_price']
-    
-    for year in range(1, years + 1):
-        # Project difficulty and price
-        year_difficulty = current_difficulty * (1 + diff_growth) ** year
-        year_price = current_price * (1 + price_trend) ** year
-        
-        # Estimate annual production (simplified)
-        avg_power_available = hydro_stats['avg_power_kw']
-        fleet_power_required = n_asics * asic_specs['power_consumption_kw']
-        
-        utilization = min(avg_power_available / fleet_power_required, 1.0) if fleet_power_required > 0 else 0
-        effective_hashrate = n_asics * asic_specs['hash_rate_th'] * utilization
-        
-        # Account for uptime
-        uptime_factor = hydro_stats['uptime_percent'] / 100
-        
-        # Check for halving
-        year_date = datetime.now() + timedelta(days=365 * year)
-        block_reward = get_block_reward(year_date)
-        
-        # Annual BTC production
-        btc_per_day = (effective_hashrate * 1e12 * 86400 * block_reward) / (year_difficulty * 2**32)
-        annual_btc = btc_per_day * 365 * uptime_factor
-        
-        # Financial calculations
-        annual_revenue = (annual_btc * year_price) * (1 - pool_fee)
-        annual_profit = annual_revenue - annual_opex
-        cumulative_cash += annual_profit
-        
-        projections['yearly_data'].append({
-            'Revenue': annual_revenue,
-            'Operating Costs': annual_opex,
-            'Net Income': annual_profit,
-            'BTC Mined': annual_btc,
-            'Cumulative Cash Flow': cumulative_cash,
-            'Avg BTC Price': year_price,
-            'Avg Difficulty': year_difficulty
-        })
-        
-        projections['total_btc_mined'] += annual_btc
-        projections['total_revenue'] += annual_revenue
-        projections['total_profit'] += annual_profit
-    
-    return projections
+    return df[display_cols], summary

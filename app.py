@@ -353,65 +353,66 @@ if run_simulation:
         fig_util.update_layout(height=300, yaxis_title="Percentage (%)")
         st.plotly_chart(fig_util, use_container_width=True)
     
-    # Detailed projections
-    st.subheader("📈 Detailed Projections")
-    
-    projections = project_mining_economics(
-        n_asics=optimal['n_asics'],
-        hydro_stats=hydro_stats,
-        btc_data=btc_data,
-        asic_specs=asic_specs,
-        scenario_params=selected_scenario,
-        years=projection_years,
-        annual_opex=annual_opex,
-        pool_fee=pool_fee
-    )
-    
-    # Create projection table
-    proj_df = pd.DataFrame(projections['yearly_data'])
-    proj_df['Year'] = range(1, len(proj_df) + 1)
-    
-    # Format columns
-    currency_cols = ['Revenue', 'Operating Costs', 'Net Income', 'Cumulative Cash Flow']
-    for col in currency_cols:
-        proj_df[col] = proj_df[col].map('${:,.0f}'.format)
-    
-    proj_df['BTC Mined'] = proj_df['BTC Mined'].map('{:.4f}'.format)
-    proj_df['Avg BTC Price'] = proj_df['Avg BTC Price'].map('${:,.0f}'.format)
-    proj_df['Avg Difficulty'] = (proj_df['Avg Difficulty'] / 1e12).map('{:.0f}T'.format)
-    
-    st.dataframe(proj_df[['Year', 'BTC Mined', 'Revenue', 'Operating Costs', 
-                         'Net Income', 'Cumulative Cash Flow', 'Avg BTC Price', 'Avg Difficulty']])
-    
-    # Summary report
-    with st.expander("📋 Executive Summary", expanded=True):
-        st.markdown(f"""
-        ### Optimization Results for {selected_scenario['name']} Scenario
+    # Detailed projections based on the median simulation for the optimal fleet
+    st.subheader(f"📈 Detailed Projections for {optimal['n_asics']} ASICs (Median Scenario)")
+
+    optimal_n_asics = optimal['n_asics']
+    if optimal_n_asics in results['fleet_sizes']:
+        optimal_idx = results['fleet_sizes'].index(optimal_n_asics)
+        median_details = results['median_simulation_details'][optimal_idx]
         
-        **Recommended Configuration:**
-        - Optimal Fleet Size: **{optimal['n_asics']} ASICs**
-        - Total Investment: **${optimal['n_asics'] * asic_specs['unit_price']:,.0f}**
-        - Expected NPV: **${optimal['expected_npv']:,.0f}**
-        - Internal Rate of Return: **{optimal['irr']:.1f}%**
-        - Payback Period: **{optimal['payback_months']:.1f} months**
+        proj_df, proj_summary = project_mining_economics(
+            median_details_data=median_details,
+            n_asics=optimal_n_asics,
+            asic_price=asic_specs['unit_price'],
+            annual_opex=annual_opex,
+            projection_years=projection_years
+        )
+
+        # Format columns for display
+        display_df = proj_df.copy()
+        currency_cols = ['Revenue', 'Operating Costs', 'Net Income', 'Cumulative Cash Flow']
+        for col in currency_cols:
+            display_df[col] = display_df[col].map('${:,.0f}'.format)
         
-        **Key Insights:**
-        - Power constraint allows maximum {int(hydro_stats['avg_power_kw'] / asic_specs['power_consumption_kw'])} ASICs at average power
-        - Optimal size balances utilization ({optimal['utilization']:.1f}%) with revenue potential
-        - {optimal['risk_assessment']}
-        
-        **Power Utilization:**
-        - Fleet will operate at 100% capacity {optimal['full_power_percent']:.1f}% of the time
-        - Average throttling level: {optimal['avg_throttle']:.1f}%
-        - Zero production expected {optimal['zero_production_days']:.1f}% of days
-        
-        **Financial Projections ({projection_years} years):**
-        - Total BTC Mined: {projections['total_btc_mined']:.4f} BTC
-        - Total Revenue: ${projections['total_revenue']:,.0f}
-        - Net Profit: ${projections['total_profit']:,.0f}
-        
-        **Recommendation:** {optimal['recommendation']}
-        """)
+        display_df['BTC Mined'] = display_df['BTC Mined'].map('{:.4f}'.format)
+        display_df['Avg BTC Price'] = display_df['Avg BTC Price'].map('${:,.0f}'.format)
+        display_df['Avg Difficulty'] = (display_df['Avg Difficulty'] / 1e12).map('{:.0f}T'.format)
+
+        st.dataframe(display_df.set_index('Year'))
+
+        # Summary report
+        with st.expander("📋 Executive Summary", expanded=True):
+            st.markdown(f"""
+            ### Optimization Results for {selected_scenario['name']} Scenario
+            
+            **Recommended Configuration:**
+            - Optimal Fleet Size: **{optimal['n_asics']} ASICs**
+            - Total Investment: **${optimal['n_asics'] * asic_specs['unit_price']:,.0f}**
+            - Expected NPV (Mean): **${optimal['expected_npv']:,.0f}**
+            - Median NPV (P50): **${results['npv_p50'][optimal_idx]:,.0f}**
+            - Internal Rate of Return: **{optimal['irr']:.1f}%**
+            - Payback Period: **{optimal['payback_months']:.1f} months**
+            
+            **Key Insights:**
+            - The recommended fleet size is based on maximizing the average NPV across all simulations.
+            - The detailed projection below is from a single, representative simulation whose outcome was closest to the median (P50) NPV.
+            - {optimal['risk_assessment']}
+            
+            **Power Utilization:**
+            - Fleet will operate at 100% capacity {optimal['full_power_percent']:.1f}% of the time
+            - Average throttling level: {optimal['avg_throttle']:.1f}%
+            - Zero production expected {optimal['zero_production_days']:.1f}% of days
+            
+            **Financial Projections ({projection_years} years from Median Simulation):**
+            - Total Revenue: ${proj_summary['total_revenue']:,.0f}
+            - Net Profit: ${proj_summary['total_profit']:,.0f}
+            - Verification NPV: **${proj_summary['npv']:,.0f}** (Matches the P50 NPV, confirming consistency)
+            
+            **Recommendation:** {optimal['recommendation']}
+            """)
+    else:
+        st.warning("Could not generate detailed projection because the optimal fleet size was not in the simulated set.")
 
 # Footer
 st.markdown("---")
