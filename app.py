@@ -56,6 +56,15 @@ with st.sidebar:
         format="%.1f"
     ) / 100.0
 
+    discount_rate = st.number_input(
+        "Discount Rate (%)",
+        value=15.0,
+        min_value=0.0,
+        max_value=50.0,
+        step=0.5,
+        format="%.1f"
+    ) / 100.0
+
     st.subheader("Operating Costs")
     annual_opex = st.number_input("Annual Operating Costs ($)", value=config['operating_costs']['annual_usd'], min_value=0)
     
@@ -252,7 +261,8 @@ if run_simulation:
             fleet_step=fleet_step,
             scenario_params=selected_scenario,
             projection_years=projection_years,
-            pool_fee=pool_fee
+            pool_fee=pool_fee,
+            discount_rate=discount_rate
         )
         
         st.session_state.simulation_results = simulation_results
@@ -387,7 +397,8 @@ if run_simulation:
             n_asics=optimal_n_asics,
             asic_price=asic_specs['unit_price'],
             annual_opex=annual_opex,
-            projection_years=projection_years
+            projection_years=projection_years,
+            discount_rate=discount_rate
         )
 
         # Format columns for display

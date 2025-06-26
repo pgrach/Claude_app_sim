@@ -320,7 +320,7 @@ def calculate_irr(cash_flows):
             return np.nan  # No valid IRR exists
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
-                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee):
+                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee, discount_rate):
     """Run Monte Carlo simulation for different fleet sizes."""
     import streamlit as st
 
@@ -341,8 +341,6 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         st.warning(f"Reducing simulations from {n_simulations} to 500 for faster processing")
         n_simulations = 2000
 
-    discount_rate = 0.15
-    
     status_text = st.empty()
     status_text.text(f"Running {n_simulations} simulations across {len(fleet_sizes)} fleet sizes...")
 
@@ -533,7 +531,7 @@ def calculate_optimal_fleet(results, hydro_stats, asic_specs):
         'zero_production_days': 36  # Based on hydro stats
     }
 
-def project_mining_economics(median_details_data, n_asics, asic_price, annual_opex, projection_years):
+def project_mining_economics(median_details_data, n_asics, asic_price, annual_opex, projection_years, discount_rate):
     """
     Generate a detailed projection table from a specific median simulation run.
     """
@@ -570,7 +568,6 @@ def project_mining_economics(median_details_data, n_asics, asic_price, annual_op
     # Calculate Annual Cash Flow for NPV verification
     df['Annual Cash Flow'] = df['Net Income']
     df.loc[0, 'Annual Cash Flow'] = -initial_investment
-    discount_rate = 0.15
     df['Discounted Cash Flow'] = df['Annual Cash Flow'] / ((1 + discount_rate) ** df['Year'])
     npv = df['Discounted Cash Flow'].sum()
 
