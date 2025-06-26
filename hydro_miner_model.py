@@ -295,6 +295,26 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
 
     return npv, cash_flows, avg_utilization, total_effective_hashrate, annual_details
 
+def calculate_irr(cash_flows):
+    """Calculate Internal Rate of Return using numpy's IRR function"""
+    try:
+        # numpy.irr is deprecated, use numpy_financial.irr instead
+        from numpy_financial import irr
+        return irr(cash_flows) * 100  # Convert to percentage
+    except:
+        # Fallback to scipy optimization
+        from scipy.optimize import brentq
+        
+        def npv_at_rate(rate, cash_flows):
+            return sum(cf / (1 + rate)**i for i, cf in enumerate(cash_flows))
+        
+        try:
+            # Find rate where NPV = 0
+            irr_rate = brentq(lambda r: npv_at_rate(r, cash_flows), -0.99, 10.0)
+            return irr_rate * 100
+        except:
+            return np.nan  # No valid IRR exists
+
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
                              n_simulations, fleet_step, scenario_params, projection_years, pool_fee):
     """Run Monte Carlo simulation for different fleet sizes."""
@@ -384,26 +404,39 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         'var_95': -np.percentile(all_npvs, 5, axis=0),
         'sharpe_ratio': np.mean(all_npvs, axis=0) / np.std(all_npvs, axis=0),
         'avg_utilization': np.mean(all_utilizations, axis=0),
-        'irr_expected': [],
+        'irr_median': [],
         'payback_months': [],
         'capacity_factor': capacity_factor,
         'median_simulation_cash_flows': median_simulation_cash_flows,
         'median_simulation_details': median_simulation_details
     }
 
-    # Simplified IRR and Payback
+    # IRR and Payback from MEDIAN simulation
     for i, n_asics in enumerate(fleet_sizes):
-        initial_investment = n_asics * asic_price
-        avg_annual_cf = np.mean(all_cash_flows[:, 1:, i], axis=0).sum() / projection_years
-        results['irr_expected'].append((avg_annual_cf / initial_investment) * 100 if initial_investment > 0 else 0)
+        # Get the median simulation's cash flows
+        median_sim_cash_flows = median_simulation_cash_flows[i]
         
-        # Payback (simplified)
-        cumulative_cfs = np.cumsum(np.mean(all_cash_flows[:, :, i], axis=0))
+        # Calculate IRR from this actual simulation
+        irr_value = calculate_irr(median_sim_cash_flows)
+        results['irr_median'].append(irr_value)
+        
+        # Payback (now also based on median simulation)
+        cumulative_cfs = np.cumsum(median_sim_cash_flows)
         payback_year = np.where(cumulative_cfs > 0)[0]
         if payback_year.any():
-            results['payback_months'].append(payback_year[0] * 12)
+            # Interpolate for more precise payback period
+            first_positive_year = payback_year[0]
+            if first_positive_year == 0:
+                prev_cumulative_cf = 0
+            else:
+                prev_cumulative_cf = cumulative_cfs[first_positive_year - 1]
+            year_cash_flow = median_sim_cash_flows[first_positive_year]
+            
+            months_into_year = (-prev_cumulative_cf / year_cash_flow) * 12 if year_cash_flow > 0 else 0
+            total_months = ((first_positive_year - 1) * 12) + months_into_year
+            results['payback_months'].append(total_months)
         else:
-            results['payback_months'].append(projection_years * 12)
+            results['payback_months'].append(np.nan) # Never paid back
 
     status_text.empty()
     return results
@@ -485,7 +518,7 @@ def calculate_optimal_fleet(results, hydro_stats, asic_specs):
         'expected_npv': results['npv_expected'][recommended_idx],
         'npv_p10': results['npv_p10'][recommended_idx],
         'npv_p90': results['npv_p90'][recommended_idx],
-        'irr': results['irr_expected'][recommended_idx],
+        'irr_median': results['irr_median'][recommended_idx],
         'payback_months': results['payback_months'][recommended_idx],
         'prob_loss': results['prob_loss'][recommended_idx],
         'utilization': results['avg_utilization'][recommended_idx],

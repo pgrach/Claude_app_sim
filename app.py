@@ -250,7 +250,7 @@ if run_simulation:
     with col2:
         st.metric("Expected NPV", f"${optimal['expected_npv']:,.0f}")
     with col3:
-        st.metric("IRR", f"{optimal['irr']:.1f}%")
+        st.metric("Median IRR", f"{optimal['irr_median']:.1f}%")
     with col4:
         st.metric("Payback Period", f"{optimal['payback_months']:.1f} months")
     
@@ -389,11 +389,14 @@ if run_simulation:
             **Recommended Configuration:**
             - Optimal Fleet Size: **{optimal['n_asics']} ASICs**
             - Total Investment: **${optimal['n_asics'] * asic_specs['unit_price']:,.0f}**
-            - Expected NPV (Mean): **${optimal['expected_npv']:,.0f}**
+
+            **Financial Metrics (Median Scenario):**
             - Median NPV (P50): **${results['npv_p50'][optimal_idx]:,.0f}**
-            - Internal Rate of Return: **{optimal['irr']:.1f}%**
+            - Median IRR: **{optimal['irr_median']:.1f}%**
             - Payback Period: **{optimal['payback_months']:.1f} months**
             
+            *These metrics are from the same representative simulation, ensuring complete consistency in the analysis.*
+
             **Key Insights:**
             - The recommended fleet size is based on maximizing the average NPV across all simulations.
             - The detailed projection below is from a single, representative simulation whose outcome was closest to the median (P50) NPV.
@@ -410,6 +413,9 @@ if run_simulation:
             - Verification NPV: **${proj_summary['npv']:,.0f}** (Matches the P50 NPV, confirming consistency)
             
             **Recommendation:** {optimal['recommendation']}
+
+            ---
+            *Note: This projection represents one specific simulation outcome (the median case). Actual results will vary based on Bitcoin price and mining difficulty changes.*
             """)
     else:
         st.warning("Could not generate detailed projection because the optimal fleet size was not in the simulated set.")

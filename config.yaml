@@ -16,7 +16,6 @@ simulation:
   n_simulations: 200   # Number of Monte Carlo simulations (reduced for speed)
   fleet_step: 15       # Step size for fleet optimization (increased for fewer tests)
   projection_years: 2  # Years to project forward (reduced for speed)
-  discount_rate: 0.15  # Annual discount rate for NPV
 
 # Economic Scenarios
 scenarios:
@@ -24,35 +23,20 @@ scenarios:
     name: "Bear Market"
     difficulty_growth_annual: 0.20  # 20% annual growth
     price_change_annual: -0.30      # -30% annual change
-    annual_opex: 50000
     description: "Crypto winter scenario with declining prices"
     
   base:
     name: "Base Case"
     difficulty_growth_annual: 0.35  # 35% annual growth
     price_change_annual: 0.15       # 15% annual growth
-    annual_opex: 50000
     description: "Moderate growth continuing current trends"
     
   bull:
     name: "Bull Market"
     difficulty_growth_annual: 0.50  # 50% annual growth
     price_change_annual: 0.50       # 50% annual growth
-    annual_opex: 50000
     description: "Strong adoption and institutional investment"
 
-# Power Profile Settings
-power:
-  min_threshold_kw: 0  # Minimum power to operate
-  safety_margin: 0.95  # Use 95% of available power
-  
 # Financial Parameters
 financial:
-  btc_transaction_fee_percent: 0.07  # Assume 7% additional from fees
   pool_fee_percent: 0.02             # 2% mining pool fee
-  asic_degradation_annual: 0.05      # 5% efficiency loss per year
-  
-# Risk Parameters
-risk:
-  var_confidence: 0.95    # Value at Risk confidence level
-  min_acceptable_irr: 0.20  # 20% minimum IRR threshold
