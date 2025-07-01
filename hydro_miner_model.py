@@ -90,10 +90,22 @@ def analyze_power_profile(hydro_df):
     # Basic statistics
     power_data = hydro_df['available_power_kw'].dropna().values
     
-    # Calculate percentiles
+    # Create a separate dataset for when the plant is operational
+    operational_power_data = power_data[power_data > 0]
+    
+    # Calculate percentiles on the full dataset
     percentiles = {}
     for p in range(0, 101, 5):
         percentiles[p] = np.percentile(power_data, p)
+
+    # Calculate percentiles on operational data only
+    operational_percentiles = {}
+    if operational_power_data.any():
+        for p in range(0, 101, 5):
+            operational_percentiles[p] = np.percentile(operational_power_data, p)
+    else: # Handle case where there are no operational days
+        for p in range(0, 101, 5):
+            operational_percentiles[p] = 0
 
     # Create data for power duration curve (correcting the graph)
     duration_curve = {}
@@ -128,6 +140,9 @@ def analyze_power_profile(hydro_df):
         'p50_power_kw': percentiles[50],
         'p75_power_kw': percentiles[75],
         'p90_power_kw': percentiles[90],
+        'op_avg_power_kw': np.mean(operational_power_data) if operational_power_data.any() else 0,
+        'op_p10_power_kw': operational_percentiles[10],
+        'op_p50_power_kw': operational_percentiles[50],
         'power_percentiles': duration_curve,
         'monthly_avg_power': monthly_avg.tolist(),
         'uptime_percent': (power_data > 0).sum() / len(power_data) * 100,
@@ -216,7 +231,7 @@ def _precompute_simulation_parameters(projection_years, btc_data, scenario_param
     
     return daily_difficulty, daily_price, daily_block_reward
 
-def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate, pool_fee):
+def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate, pool_fee, additional_upfront_costs):
     """
     Helper function to run a single vectorized simulation for all fleet sizes.
     This version is optimized to remove daily loops and use matrix operations.
@@ -282,7 +297,7 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     }
     
     # Calculate final cash flows including investment and opex
-    initial_investment = -fleet_sizes_arr * asic_price
+    initial_investment = -fleet_sizes_arr * asic_price - additional_upfront_costs
     cash_flows = np.zeros((projection_years + 1, len(fleet_sizes_arr)))
     cash_flows[0, :] = initial_investment
     cash_flows[1:, :] = annual_revenue - annual_opex
@@ -319,7 +334,7 @@ def calculate_irr(cash_flows):
             return np.nan  # No valid IRR exists
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
-                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee, discount_rate):
+                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee, discount_rate, additional_upfront_costs):
     """Run Monte Carlo simulation for different fleet sizes."""
     import streamlit as st
 
@@ -355,7 +370,8 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
             projection_years=projection_years,
             annual_opex=annual_opex,
             discount_rate=discount_rate,
-            pool_fee=pool_fee
+            pool_fee=pool_fee,
+            additional_upfront_costs=additional_upfront_costs
         ) for i in range(n_simulations)
     )
 
@@ -530,14 +546,14 @@ def calculate_optimal_fleet(results, hydro_stats, asic_specs):
         'zero_production_days': 36  # Based on hydro stats
     }
 
-def project_mining_economics(median_details_data, n_asics, asic_price, annual_opex, projection_years, discount_rate):
+def project_mining_economics(median_details_data, n_asics, asic_price, annual_opex, projection_years, discount_rate, additional_upfront_costs):
     """
     Generate a detailed projection table from a specific median simulation run.
     """
     if not median_details_data:
         return pd.DataFrame(), {}
 
-    initial_investment = n_asics * asic_price
+    initial_investment = n_asics * asic_price + additional_upfront_costs
     
     # Create a DataFrame for years 1 to N
     df_years = pd.DataFrame({

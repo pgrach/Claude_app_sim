@@ -78,6 +78,7 @@ with st.sidebar:
 
     st.subheader("Operating Costs")
     annual_opex = st.number_input("Annual Operating Costs ($)", value=config['operating_costs']['annual_usd'], min_value=0)
+    additional_upfront_costs = st.number_input("Additional Upfront Costs ($)", value=0, min_value=0)
     
     st.subheader("Simulation Parameters")
     n_simulations = st.number_input("Monte Carlo Simulations", value=config['simulation']['n_simulations'], min_value=100, max_value=10000)
@@ -144,13 +145,21 @@ with col1:
     
     metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
     with metrics_col1:
-        st.metric("Average Power", f"{hydro_stats['avg_power_kw']:.0f} kW")
+        st.metric("Average Power (Overall)", f"{hydro_stats['avg_power_kw']:.0f} kW", help="The average power output including downtime.")
     with metrics_col2:
-        st.metric("Uptime", f"{hydro_stats['uptime_percent']:.1f}%")
+        st.metric("Uptime", f"{hydro_stats['uptime_percent']:.1f}%", help="The percentage of time the hydro plant is generating any power.")
     with metrics_col3:
-        st.metric("P50 Power", f"{hydro_stats['p50_power_kw']:.0f} kW")
+        st.metric(
+            "Baseload Power (When ON)", 
+            f"{hydro_stats['op_p10_power_kw']:.0f} kW",
+            help="The power level exceeded 90% of the time *when the plant is operational*. This is your reliable minimum during uptime."
+        )
     with metrics_col4:
-        st.metric("P90 Power", f"{hydro_stats['p90_power_kw']:.0f} kW")
+        st.metric(
+            "Typical Power (When ON)", 
+            f"{hydro_stats['op_p50_power_kw']:.0f} kW",
+            help="The median power level *when the plant is operational*."
+        )
       # Power duration curve
     st.subheader("Power Duration Curve")
     fig_duration = go.Figure()
@@ -270,7 +279,8 @@ if run_simulation:
             scenario_params=selected_scenario,
             projection_years=projection_years,
             pool_fee=pool_fee,
-            discount_rate=discount_rate
+            discount_rate=discount_rate,
+            additional_upfront_costs=additional_upfront_costs
         )
         
         st.session_state.simulation_results = simulation_results
@@ -406,7 +416,8 @@ if run_simulation:
             asic_price=asic_specs['unit_price'],
             annual_opex=annual_opex,
             projection_years=projection_years,
-            discount_rate=discount_rate
+            discount_rate=discount_rate,
+            additional_upfront_costs=additional_upfront_costs
         )
 
         # Format columns for display
@@ -428,7 +439,7 @@ if run_simulation:
             
             **Recommended Configuration:**
             - Optimal Fleet Size: **{optimal['n_asics']} ASICs**
-            - Total Investment: **${optimal['n_asics'] * asic_specs['unit_price']:,.0f}**
+            - Total Investment: **${optimal['n_asics'] * asic_specs['unit_price'] + additional_upfront_costs:,.0f}**
 
             **Financial Metrics (Median Scenario):**
             - Median NPV (P50): **${results['npv_p50'][optimal_idx]:,.0f}**
