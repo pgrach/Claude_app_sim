@@ -43,13 +43,6 @@ if 'simulation_results' not in st.session_state:
 st.title("⚡ Hydro Bitcoin Mining Optimizer")
 st.markdown("*Optimize ASIC fleet size for run-of-river hydroelectric power*")
 
-# Add cache clear button in development
-if st.sidebar.button("🔄 Clear Data Cache", help="Click if data seems outdated"):
-    get_btc_data.clear()
-    get_hydro_analysis.clear()
-    st.sidebar.success("Cache cleared! The page will reload with fresh data.")
-    st.rerun()
-
 # Sidebar configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
