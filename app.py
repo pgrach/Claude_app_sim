@@ -70,21 +70,66 @@ with st.sidebar:
         help="ASIC miner model name for reference"
     )
     
-    col_hash, col_power = st.columns(2)
-    with col_hash:
-        asic_hashrate = st.number_input(
-            "Hashrate (TH/s)", 
-            value=config['asic']['hash_rate_th'], 
-            min_value=1,
-            help="Mining speed in terahashes per second"
-        )
-    with col_power:
-        asic_power = st.number_input(
-            "Power per TH (W)", 
-            value=config['asic']['watts_per_th'], 
-            min_value=1.0,
-            help="Power consumption per terahash"
-        )
+    # Overclocking capability toggle
+    enable_overclocking = st.checkbox(
+        "🚀 Enable Overclocking Mode",
+        value=False,
+        help="Allow ASICs to run in overclocked mode when excess power is available"
+    )
+    
+    if enable_overclocking:
+        st.info("💡 **Overclocking Mode**: ASICs will dynamically switch between standard and overclocked modes based on available power")
+        
+        col_base, col_oc = st.columns(2)
+        with col_base:
+            st.markdown("**Standard Mode**")
+            asic_hashrate = st.number_input(
+                "Base Hashrate (TH/s)", 
+                value=config['asic']['hash_rate_th'], 
+                min_value=1,
+                help="Standard mining speed in terahashes per second"
+            )
+            asic_power = st.number_input(
+                "Base Power per TH (W)", 
+                value=config['asic']['watts_per_th'], 
+                min_value=1.0,
+                help="Standard power consumption per terahash"
+            )
+        
+        with col_oc:
+            st.markdown("**Overclocked Mode**")
+            asic_hashrate_oc = st.number_input(
+                "OC Hashrate (TH/s)", 
+                value=562.5,  # Your overclocked specs
+                min_value=float(asic_hashrate),
+                help="Overclocked mining speed in terahashes per second"
+            )
+            asic_power_oc = st.number_input(
+                "OC Power per TH (W)", 
+                value=18.7,  # Your overclocked specs
+                min_value=1.0,
+                help="Overclocked power consumption per terahash"
+            )
+    else:
+        col_hash, col_power = st.columns(2)
+        with col_hash:
+            asic_hashrate = st.number_input(
+                "Hashrate (TH/s)", 
+                value=config['asic']['hash_rate_th'], 
+                min_value=1,
+                help="Mining speed in terahashes per second"
+            )
+        with col_power:
+            asic_power = st.number_input(
+                "Power per TH (W)", 
+                value=config['asic']['watts_per_th'], 
+                min_value=1.0,
+                help="Power consumption per terahash"
+            )
+        
+        # Set overclocked values same as standard when overclocking is disabled
+        asic_hashrate_oc = asic_hashrate
+        asic_power_oc = asic_power
     
     asic_price = st.number_input(
         "Price per TH ($)", 
@@ -96,7 +141,22 @@ with st.sidebar:
     # Show calculated metrics
     total_asic_power = asic_hashrate * asic_power / 1000
     total_asic_cost = asic_hashrate * asic_price
-    st.info(f"📊 **Per ASIC**: {total_asic_power:.1f} kW power, ${total_asic_cost:,.0f} cost")
+    
+    if enable_overclocking:
+        total_asic_power_oc = asic_hashrate_oc * asic_power_oc / 1000
+        efficiency_standard = asic_hashrate / total_asic_power  # TH/kW
+        efficiency_oc = asic_hashrate_oc / total_asic_power_oc  # TH/kW
+        efficiency_gain = ((efficiency_oc - efficiency_standard) / efficiency_standard) * 100
+        
+        st.info(f"""
+        📊 **Per ASIC Comparison**:
+        - **Standard**: {total_asic_power:.1f} kW, {asic_hashrate} TH/s ({efficiency_standard:.1f} TH/kW)
+        - **Overclocked**: {total_asic_power_oc:.1f} kW, {asic_hashrate_oc} TH/s ({efficiency_oc:.1f} TH/kW)
+        - **Cost**: ${total_asic_cost:,.0f} (same for both modes)
+        - **Efficiency change**: {efficiency_gain:+.1f}%
+        """)
+    else:
+        st.info(f"📊 **Per ASIC**: {total_asic_power:.1f} kW power, ${total_asic_cost:,.0f} cost")
     
     st.subheader("💰 Financial Assumptions")
     
@@ -165,14 +225,6 @@ with st.sidebar:
         max_value=5,
         help="Investment time horizon for analysis"
     )
-    
-    # Show estimated runtime
-    estimated_time = (n_simulations * len(range(fleet_step, 100, fleet_step))) / 50000
-    if estimated_time < 1:
-        time_text = f"~{estimated_time*60:.0f} seconds"
-    else:
-        time_text = f"~{estimated_time:.1f} minutes"
-    st.caption(f"⏱️ Estimated runtime: {time_text}")
     
     st.subheader("📈 Economic Parameters")
     
@@ -300,12 +352,26 @@ with col1:
     max_asics = int(hydro_stats['max_power_kw'] / asic_power_kw)
     baseload_asics = int(hydro_stats['op_p10_power_kw'] / asic_power_kw)
     
-    st.info(f"""
-    💡 **Power Insights for {asic_model}**:
-    - **Maximum capacity**: {max_asics} ASICs ({max_asics * asic_power_kw:.0f} kW)
-    - **Reliable baseload**: {baseload_asics} ASICs can run 90% of operating time
-    - **Power per ASIC**: {asic_power_kw:.1f} kW
-    """)
+    if enable_overclocking:
+        asic_power_kw_oc = asic_hashrate_oc * asic_power_oc / 1000
+        max_asics_oc = int(hydro_stats['max_power_kw'] / asic_power_kw_oc)
+        baseload_asics_oc = int(hydro_stats['op_p10_power_kw'] / asic_power_kw_oc)
+        
+        st.info(f"""
+        💡 **Power Insights for {asic_model} with Overclocking**:
+        - **Standard mode capacity**: {max_asics} ASICs ({max_asics * asic_power_kw:.0f} kW)
+        - **Overclocked mode capacity**: {max_asics_oc} ASICs ({max_asics_oc * asic_power_kw_oc:.0f} kW)
+        - **Reliable baseload (standard)**: {baseload_asics} ASICs can run 90% of operating time
+        - **Reliable baseload (overclocked)**: {baseload_asics_oc} ASICs can run 90% of operating time
+        - **Smart scaling**: Fleet automatically adjusts between modes based on available power
+        """)
+    else:
+        st.info(f"""
+        💡 **Power Insights for {asic_model}**:
+        - **Maximum capacity**: {max_asics} ASICs ({max_asics * asic_power_kw:.0f} kW)
+        - **Reliable baseload**: {baseload_asics} ASICs can run 90% of operating time
+        - **Power per ASIC**: {asic_power_kw:.1f} kW
+        """)
 
     # Power duration curve with enhanced visualization
     st.subheader("Power Duration Curve")
@@ -336,7 +402,7 @@ with col1:
     if max_possible_asics not in fleet_lines_to_show and max_possible_asics > 0:
         fleet_lines_to_show.append(max_possible_asics)
     
-    for i, n_asics in enumerate(fleet_lines_to_show[:8]):  # Limit to 8 lines to avoid clutter
+    for i, n_asics in enumerate(fleet_lines_to_show):  # Show all fleet lines
         fig_duration.add_hline(
             y=n_asics * asic_power_kw,
             line_dash="dash",
@@ -541,7 +607,22 @@ if run_simulation:
     st.header("🎯 Optimization Results")
     
     # Pre-simulation validation
-    max_possible_asics = int(hydro_stats['max_power_kw'] / (asic_hashrate * asic_power / 1000))
+    if enable_overclocking:
+        # With overclocking, we test up to standard mode capacity but can run fewer in overclock mode
+        max_possible_asics = int(hydro_stats['max_power_kw'] / (asic_hashrate * asic_power / 1000))
+        max_possible_asics_oc = int(hydro_stats['max_power_kw'] / (asic_hashrate_oc * asic_power_oc / 1000))
+        st.info(f"🔧 **Fleet Size Testing Range**: Will test 1 to {max_possible_asics} ASICs (max {max_possible_asics_oc} in pure overclock mode)")
+    else:
+        max_possible_asics = int(hydro_stats['max_power_kw'] / (asic_hashrate * asic_power / 1000))
+    
+    # Show estimated runtime now that we have max_possible_asics
+    estimated_time = (n_simulations * len(range(fleet_step, max_possible_asics + 1, fleet_step))) / 50000
+    if estimated_time < 1:
+        time_text = f"~{estimated_time*60:.0f} seconds"
+    else:
+        time_text = f"~{estimated_time:.1f} minutes"
+    st.caption(f"⏱️ Estimated runtime: {time_text}")
+    
     if max_possible_asics < fleet_step:
         st.error(f"❌ **Configuration Error**: Your fleet step ({fleet_step}) is larger than the maximum possible ASICs ({max_possible_asics}). Please reduce the fleet step in the sidebar.")
         st.stop()
@@ -566,7 +647,11 @@ if run_simulation:
                 'watts_per_th': asic_power,
                 'price_usd_per_th': asic_price,
                 'power_consumption_kw': asic_hashrate * asic_power / 1000,
-                'unit_price': asic_hashrate * asic_price
+                'unit_price': asic_hashrate * asic_price,
+                'enable_overclocking': enable_overclocking,
+                'hash_rate_th_oc': asic_hashrate_oc,
+                'watts_per_th_oc': asic_power_oc,
+                'power_consumption_kw_oc': asic_hashrate_oc * asic_power_oc / 1000
             }
             
             progress_bar.progress(0.2)

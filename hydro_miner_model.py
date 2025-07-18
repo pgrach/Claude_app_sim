@@ -6,6 +6,13 @@ import warnings
 from joblib import Parallel, delayed
 warnings.filterwarnings('ignore')
 
+# Import enhanced throttling for overclocking support
+try:
+    from enhanced_throttling import vectorized_enhanced_throttling
+    ENHANCED_THROTTLING_AVAILABLE = True
+except ImportError:
+    ENHANCED_THROTTLING_AVAILABLE = False
+
 def load_hydro_data(filepath):
     """Load and process hydroelectric power data from Excel file."""
     df = pd.read_excel(filepath)
@@ -301,20 +308,29 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     fleet_power_req_row = fleet_sizes_arr * asic_power_kw
     fleet_hashrate_row = fleet_sizes_arr * asic_hashrate
 
-    # 3. Efficient Power Masking and Matrix-Based Calculations
-    # Use a mask for days with power
+    # 3. Enhanced Power Management with Overclocking Support
     power_mask = simulated_power > 0
     
-    # Calculate available power for each fleet size (n_days, n_fleets)
-    fleet_power_avail = np.minimum(simulated_power_col, fleet_power_req_row)
-    
-    # Calculate throttle percentage for each fleet on each day
-    throttle = np.divide(fleet_power_avail, fleet_power_req_row, 
-                         out=np.zeros_like(fleet_power_avail), 
-                         where=fleet_power_req_row > 0)
+    if asic_specs.get('enable_overclocking', False) and ENHANCED_THROTTLING_AVAILABLE:
+        # Use enhanced throttling that supports overclocking
+        throttling_result = vectorized_enhanced_throttling(simulated_power_col, fleet_sizes_arr, asic_specs)
+        effective_hashrate = throttling_result['effective_hashrate']
+        fleet_power_avail = throttling_result['power_used']
+    else:
+        # Use standard throttling logic
+        fleet_power_req_row = fleet_sizes_arr * asic_power_kw
+        fleet_hashrate_row = fleet_sizes_arr * asic_hashrate
+        
+        # Calculate available power for each fleet size (n_days, n_fleets)
+        fleet_power_avail = np.minimum(simulated_power_col, fleet_power_req_row)
+        
+        # Calculate throttle percentage for each fleet on each day
+        throttle = np.divide(fleet_power_avail, fleet_power_req_row, 
+                             out=np.zeros_like(fleet_power_avail), 
+                             where=fleet_power_req_row > 0)
 
-    # Calculate effective hashrate based on throttling
-    effective_hashrate = fleet_hashrate_row * throttle
+        # Calculate effective hashrate based on throttling
+        effective_hashrate = fleet_hashrate_row * throttle
     
     # Calculate daily BTC mined for each fleet
     btc_mined = (effective_hashrate * 1e12 * 86400 * daily_block_reward_col) / (daily_difficulty_col * 2**32)
@@ -383,8 +399,28 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
     asic_hashrate = asic_specs['hash_rate_th']
     asic_power_kw = asic_specs['power_consumption_kw']
     asic_price = asic_specs['unit_price']
-
-    max_fleet = int(hydro_stats['max_power_kw'] / asic_power_kw)
+    
+    # Determine maximum fleet size based on overclocking capability
+    if asic_specs.get('enable_overclocking', False):
+        # When overclocking is enabled, limit fleet size to what can run in overclock mode
+        # This gives more realistic and optimal results
+        asic_power_kw_oc = asic_specs['power_consumption_kw_oc']
+        max_fleet_oc = int(hydro_stats['max_power_kw'] / asic_power_kw_oc)
+        max_fleet_standard = int(hydro_stats['max_power_kw'] / asic_power_kw)
+        
+        # Use the overclock limit as the practical maximum for optimization
+        # This prevents testing unrealistic fleet sizes that would never achieve good utilization
+        max_fleet = max_fleet_oc
+        
+        st.info(f"""
+        🚀 **Overclocking Mode**: Testing fleet sizes optimized for overclock capability
+        - Max fleet in standard mode: {max_fleet_standard} ASICs
+        - Max fleet in overclock mode: {max_fleet_oc} ASICs
+        - **Testing range**: 1 to {max_fleet} ASICs (overclock-optimized)
+        """)
+    else:
+        max_fleet = int(hydro_stats['max_power_kw'] / asic_power_kw)
+    
     fleet_sizes = list(range(fleet_step, max_fleet + 1, fleet_step))
 
     if not fleet_sizes:
