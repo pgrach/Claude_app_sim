@@ -53,12 +53,36 @@ def load_btc_data(price_file, difficulty_file):
     if len(last_year) > 1:
         # Sort by date to ensure proper chronological order
         last_year = last_year.sort_values('Date')
-        price_start = last_year.iloc[0]['Close']
-        price_end = last_year.iloc[-1]['Close']
-        price_growth_annual = (price_end / price_start) - 1
         
-        # For difficulty, use the existing method which works with monthly changes
-        difficulty_growth_annual = last_year['difficulty_growth_30d'].mean() * 12
+        # Calculate annual price growth from oldest to newest
+        price_start = last_year.iloc[0]['Close']  # Oldest price in last year
+        price_end = last_year.iloc[-1]['Close']   # Newest price in last year
+        
+        # If we have enough data points (at least 350 days), calculate proper annual growth
+        if len(last_year) >= 350:
+            price_growth_annual = (price_end / price_start) - 1
+        else:
+            # If insufficient data, calculate from available data and annualize
+            days_available = (last_year['Date'].max() - last_year['Date'].min()).days
+            if days_available > 0:
+                price_growth_raw = (price_end / price_start) - 1
+                price_growth_annual = price_growth_raw * (365.0 / days_available)
+            else:
+                price_growth_annual = 0
+        
+        # For difficulty, calculate growth more robustly
+        if len(last_year) >= 350:
+            difficulty_start = last_year.iloc[0]['Difficulty']
+            difficulty_end = last_year.iloc[-1]['Difficulty']
+            difficulty_growth_annual = (difficulty_end / difficulty_start) - 1
+        else:
+            # Use average monthly changes if insufficient data
+            valid_changes = last_year['difficulty_growth_30d'].dropna()
+            if len(valid_changes) > 0:
+                difficulty_growth_annual = valid_changes.mean() * 12
+            else:
+                difficulty_growth_annual = 0
+        
         price_volatility_annual = last_year['Close'].pct_change().std() * np.sqrt(365)
     else:
         # Fallback if insufficient data
