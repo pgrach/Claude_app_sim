@@ -47,14 +47,32 @@ def load_btc_data(price_file, difficulty_file):
     current = btc_df.iloc[-1]
     
     # Historical statistics
-    last_year = btc_df[btc_df['Date'] > btc_df['Date'].max() - timedelta(days=365)]
+    last_year = btc_df[btc_df['Date'] > btc_df['Date'].max() - timedelta(days=365)].copy()
+    
+    # Calculate annualized growth rates
+    if len(last_year) > 1:
+        # Sort by date to ensure proper chronological order
+        last_year = last_year.sort_values('Date')
+        price_start = last_year.iloc[0]['Close']
+        price_end = last_year.iloc[-1]['Close']
+        price_growth_annual = (price_end / price_start) - 1
+        
+        # For difficulty, use the existing method which works with monthly changes
+        difficulty_growth_annual = last_year['difficulty_growth_30d'].mean() * 12
+        price_volatility_annual = last_year['Close'].pct_change().std() * np.sqrt(365)
+    else:
+        # Fallback if insufficient data
+        price_growth_annual = 0
+        difficulty_growth_annual = 0
+        price_volatility_annual = 0
     
     return {
         'current_price': current['Close'],
         'current_difficulty': current['Difficulty'],
         'current_revenue_per_th': current['revenue_per_th_day'],
-        'difficulty_growth_annual': last_year['difficulty_growth_30d'].mean() * 12,
-        'price_volatility_annual': last_year['Close'].pct_change().std() * np.sqrt(365),
+        'price_growth_annual': price_growth_annual,
+        'difficulty_growth_annual': difficulty_growth_annual,
+        'price_volatility_annual': price_volatility_annual,
         'historical_data': btc_df[['Date', 'Close', 'Difficulty', 'revenue_per_th_day']].rename(
             columns={'Date': 'date', 'Close': 'price', 'Difficulty': 'difficulty'})
     }

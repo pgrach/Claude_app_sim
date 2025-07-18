@@ -2,10 +2,10 @@
 
 # ASIC Specifications
 asic:
-  model: "Whatsminer M65S Hydro"
-  hash_rate_th: 400
-  watts_per_th: 18.5
-  price_usd_per_th: 13.7
+  model: "Whatsminer M63s++ Hydro"
+  hash_rate_th: 460
+  watts_per_th: 15.5
+  price_usd_per_th: 14.9
 
 # Operating Costs
 operating_costs:
