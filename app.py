@@ -57,7 +57,7 @@ with st.sidebar:
         **Follow these steps:**
         1. **Configure your ASIC model** below
         2. **Set financial parameters** (costs, fees)
-        3. **Choose economic scenario** (bear/base/bull market)
+        3. **Adjust economic parameters** as needed (defaults based on historical data)
         4. **Click 'Run Optimization'** to get results
         
         💡 **Tip**: Start with default values, then adjust based on your specific situation.
@@ -174,61 +174,60 @@ with st.sidebar:
         time_text = f"~{estimated_time:.1f} minutes"
     st.caption(f"⏱️ Estimated runtime: {time_text}")
     
-    st.subheader("📈 Economic Scenarios")
+    st.subheader("📈 Economic Parameters")
     
-    scenario_key = st.selectbox(
-        "Market Scenario",
-        options=list(config['scenarios'].keys()),
-        format_func=lambda k: f"{config['scenarios'][k]['name']} {'📈' if 'bull' in k.lower() else '📉' if 'bear' in k.lower() else '📊'}",
-        help="Choose expected market conditions for Bitcoin price and difficulty"
-    )
-    selected_scenario = config['scenarios'][scenario_key].copy()
-
-    if scenario_key == 'custom':
-        st.markdown("**🎛️ Custom Scenario Parameters**")
-        
-        col_diff, col_price = st.columns(2)
-        with col_diff:
-            custom_difficulty_growth = st.slider(
-                "Difficulty Growth (%/year)",
-                min_value=-50.0,
-                max_value=150.0,
-                value=selected_scenario['difficulty_growth_annual'] * 100,
-                step=1.0,
-                format="%.1f%%",
-                help="Expected annual change in mining difficulty"
-            ) / 100.0
-        
-        with col_price:
-            custom_price_change = st.slider(
-                "Price Change (%/year)",
-                min_value=-50.0,
-                max_value=150.0,
-                value=selected_scenario['price_change_annual'] * 100,
-                step=1.0,
-                format="%.1f%%",
-                help="Expected annual Bitcoin price growth"
-            ) / 100.0
-        
-        custom_price_volatility = st.slider(
-            "Price Volatility (%/year)",
-            min_value=0.0,
-            max_value=200.0,
-            value=btc_data['price_volatility_annual'] * 100,
-            step=5.0,
+    # Use only the custom scenario with historical defaults
+    selected_scenario = config['scenarios']['custom'].copy()
+    
+    # Set defaults to historical values
+    selected_scenario['difficulty_growth_annual'] = btc_data['difficulty_growth_annual']
+    selected_scenario['price_change_annual'] = btc_data['price_growth_annual']
+    selected_scenario['price_volatility_annual'] = btc_data['price_volatility_annual']
+    
+    st.markdown("**🎛️ Adjust Parameters (defaults based on historical 365-day data)**")
+    
+    col_diff, col_price = st.columns(2)
+    with col_diff:
+        custom_difficulty_growth = st.slider(
+            "Difficulty Growth (%/year)",
+            min_value=-50.0,
+            max_value=150.0,
+            value=selected_scenario['difficulty_growth_annual'] * 100,
+            step=1.0,
             format="%.1f%%",
-            help="Expected annual price volatility (uncertainty)"
+            help="Expected annual change in mining difficulty"
         ) / 100.0
-        
-        selected_scenario['difficulty_growth_annual'] = custom_difficulty_growth
-        selected_scenario['price_change_annual'] = custom_price_change
-        selected_scenario['price_volatility_annual'] = custom_price_volatility
+    
+    with col_price:
+        custom_price_change = st.slider(
+            "Price Change (%/year)",
+            min_value=-50.0,
+            max_value=150.0,
+            value=selected_scenario['price_change_annual'] * 100,
+            step=1.0,
+            format="%.1f%%",
+            help="Expected annual Bitcoin price growth"
+        ) / 100.0
+    
+    custom_price_volatility = st.slider(
+        "Price Volatility (%/year)",
+        min_value=0.0,
+        max_value=200.0,
+        value=selected_scenario['price_volatility_annual'] * 100,
+        step=5.0,
+        format="%.1f%%",
+        help="Expected annual price volatility (uncertainty)"
+    ) / 100.0
+    
+    selected_scenario['difficulty_growth_annual'] = custom_difficulty_growth
+    selected_scenario['price_change_annual'] = custom_price_change
+    selected_scenario['price_volatility_annual'] = custom_price_volatility
 
-    with st.expander("📋 Scenario Details", expanded=True):
+    with st.expander("📋 Current Parameters", expanded=True):
         st.markdown(f"**{selected_scenario['name']}**")
         st.markdown(f"*{selected_scenario['description']}*")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric(
                 "Difficulty Growth", 
@@ -241,11 +240,10 @@ with st.sidebar:
                 f"{selected_scenario['price_change_annual']:.1%}",
                 help="Expected annual change in Bitcoin price"
             )
-        
-        if scenario_key == 'custom':
+        with col3:
             st.metric(
                 "Volatility", 
-                f"{selected_scenario.get('price_volatility_annual', btc_data['price_volatility_annual']):.1%}",
+                f"{selected_scenario['price_volatility_annual']:.1%}",
                 help="Higher volatility = more uncertainty in projections"
             )
 
@@ -510,15 +508,15 @@ with col2:
     hist_col1, hist_col2, hist_col3 = st.columns(3)
     with hist_col1:
         st.metric(
-            "📈 Price Growth",
-            f"{btc_data.get('price_growth_annual', 0):.1%}",
-            help="Annualized Bitcoin price change over the last 365 days"
-        )
-    with hist_col2:
-        st.metric(
             "⚙️ Difficulty Growth",
             f"{btc_data.get('difficulty_growth_annual', 0):.1%}",
             help="Annualized network difficulty change over the last 365 days"
+        )
+    with hist_col2:
+        st.metric(
+            "📈 Price Growth",
+            f"{btc_data.get('price_growth_annual', 0):.1%}",
+            help="Annualized Bitcoin price change over the last 365 days"
         )
     with hist_col3:
         st.metric(

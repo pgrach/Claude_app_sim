@@ -19,29 +19,11 @@ simulation:
 
 # Economic Scenarios
 scenarios:
-  bear:
-    name: "Bear Market"
-    difficulty_growth_annual: 0.20  # 20% annual growth
-    price_change_annual: -0.30      # -30% annual change
-    description: "Crypto winter scenario with declining prices"
-    
-  base:
-    name: "Base Case"
-    difficulty_growth_annual: 0.35  # 35% annual growth
-    price_change_annual: 0.15       # 15% annual growth
-    description: "Moderate growth continuing current trends"
-    
-  bull:
-    name: "Bull Market"
-    difficulty_growth_annual: 0.50  # 50% annual growth
-    price_change_annual: 0.50       # 50% annual growth
-    description: "Strong adoption and institutional investment"
-    
   custom:
-    name: "Custom"
-    difficulty_growth_annual: 0.00  # Placeholder, user will override
-    price_change_annual: 0.00       # Placeholder, user will override
-    description: "User-defined custom scenario"
+    name: "Custom Parameters"
+    difficulty_growth_annual: 0.00  # Will use historical 365-day values as default
+    price_change_annual: 0.00       # Will use historical 365-day values as default
+    description: "Adjustable parameters based on historical data"
 
 # Financial Parameters
 financial:
