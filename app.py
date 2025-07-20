@@ -197,22 +197,6 @@ with st.sidebar:
         help="Setup costs: installation, infrastructure, permits, etc."
     )
     
-    st.subheader("⚡ Power Allocation")
-    parasitic_load_kw = st.number_input(
-        "Parasitic Load (kW)", 
-        value=5.0, 
-        min_value=0.0,
-        max_value=50.0,
-        step=0.5,
-        help="Power consumed by hydro plant operations, cooling pumps, control systems, etc. (subtracted from available power)"
-    )
-    
-    col_hydro, col_cooling = st.columns(2)
-    with col_hydro:
-        st.caption("💡 **Typical loads**: Hydro plant ~2kW")
-    with col_cooling:
-        st.caption("🌊 **Container loads**: Cooling pumps, fans, controls ~3-5kW")
-    
     st.subheader("🎲 Simulation Parameters")
     
     col_sim, col_step = st.columns(2)
@@ -336,12 +320,6 @@ with col1:
     if hydro_stats['max_power_kw'] < 50:
         st.warning("⚠️ **Low Power Alert**: Your hydro facility has very low power output. Consider reviewing the data or consulting with a power systems engineer.")
     
-    # Add warning if parasitic load is too high
-    if parasitic_load_kw >= hydro_stats['max_power_kw'] * 0.8:
-        st.warning(f"⚠️ **High Parasitic Load**: Your parasitic load ({parasitic_load_kw:.1f} kW) is {parasitic_load_kw/hydro_stats['max_power_kw']*100:.0f}% of max power ({hydro_stats['max_power_kw']:.0f} kW). This leaves very little power for mining.")
-    elif parasitic_load_kw >= hydro_stats['max_power_kw'] * 0.5:
-        st.info(f"💡 **Moderate Parasitic Load**: Your parasitic load ({parasitic_load_kw:.1f} kW) is {parasitic_load_kw/hydro_stats['max_power_kw']*100:.0f}% of max power. Consider optimizing cooling and auxiliary systems.")
-    
     # Display power statistics
     metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
     with metrics_col1:
@@ -369,37 +347,30 @@ with col1:
             help="Maximum recorded power output"
         )
     
-    # Power capacity insights (accounting for parasitic loads)
-    net_max_power_kw = max(0, hydro_stats['max_power_kw'] - parasitic_load_kw)
-    net_baseload_power_kw = max(0, hydro_stats['op_p10_power_kw'] - parasitic_load_kw)
-    
+    # Power capacity insights
     asic_power_kw = asic_hashrate * asic_power / 1000
-    max_asics = int(net_max_power_kw / asic_power_kw) if asic_power_kw > 0 else 0
-    baseload_asics = int(net_baseload_power_kw / asic_power_kw) if asic_power_kw > 0 else 0
+    max_asics = int(hydro_stats['max_power_kw'] / asic_power_kw)
+    baseload_asics = int(hydro_stats['op_p10_power_kw'] / asic_power_kw)
     
     if enable_overclocking:
         asic_power_kw_oc = asic_hashrate_oc * asic_power_oc / 1000
-        max_asics_oc = int(net_max_power_kw / asic_power_kw_oc) if asic_power_kw_oc > 0 else 0
-        baseload_asics_oc = int(net_baseload_power_kw / asic_power_kw_oc) if asic_power_kw_oc > 0 else 0
+        max_asics_oc = int(hydro_stats['max_power_kw'] / asic_power_kw_oc)
+        baseload_asics_oc = int(hydro_stats['op_p10_power_kw'] / asic_power_kw_oc)
         
         st.info(f"""
         💡 **Power Insights for {asic_model} with Overclocking**:
-        - **Gross power capacity**: {hydro_stats['max_power_kw']:.0f} kW (before parasitic loads)
-        - **Net power for mining**: {net_max_power_kw:.0f} kW (after {parasitic_load_kw:.1f} kW parasitic load)
         - **Standard mode capacity**: {max_asics} ASICs ({max_asics * asic_power_kw:.0f} kW)
         - **Overclocked mode capacity**: {max_asics_oc} ASICs ({max_asics_oc * asic_power_kw_oc:.0f} kW)
-        - **Reliable baseload (standard)**: {baseload_asics} ASICs can run 90% of the time when plant is ON (effective {baseload_asics * asic_power_kw / net_max_power_kw * 100 if net_max_power_kw > 0 else 0:.0f}% of net capacity)
-        - **Reliable baseload (overclocked)**: {baseload_asics_oc} ASICs can run 90% of the time when plant is ON (effective {baseload_asics_oc * asic_power_kw_oc / net_max_power_kw * 100 if net_max_power_kw > 0 else 0:.0f}% of net capacity)
+        - **Reliable baseload (standard)**: {baseload_asics} ASICs can run 90% of the time when plant is ON (effective {baseload_asics * asic_power_kw / hydro_stats['max_power_kw'] * 100:.0f}% of max capacity)
+        - **Reliable baseload (overclocked)**: {baseload_asics_oc} ASICs can run 90% of the time when plant is ON (effective {baseload_asics_oc * asic_power_kw_oc / hydro_stats['max_power_kw'] * 100:.0f}% of max capacity)
         - **Smart scaling**: Fleet automatically adjusts between modes based on available power
         - **Note**: Plant uptime is {hydro_stats['uptime_percent']:.1f}%, so actual availability varies
         """)
     else:
         st.info(f"""
         💡 **Power Insights for {asic_model}**:
-        - **Gross power capacity**: {hydro_stats['max_power_kw']:.0f} kW (before parasitic loads)
-        - **Net power for mining**: {net_max_power_kw:.0f} kW (after {parasitic_load_kw:.1f} kW parasitic load)
         - **Maximum capacity**: {max_asics} ASICs ({max_asics * asic_power_kw:.0f} kW)
-        - **Reliable baseload**: {baseload_asics} ASICs can run 90% of the time when plant is ON (effective {baseload_asics * asic_power_kw / net_max_power_kw * 100 if net_max_power_kw > 0 else 0:.0f}% of net capacity)
+        - **Reliable baseload**: {baseload_asics} ASICs can run 90% of the time when plant is ON (effective {baseload_asics * asic_power_kw / hydro_stats['max_power_kw'] * 100:.0f}% of max capacity)
         - **Power per ASIC**: {asic_power_kw:.1f} kW
         - **Note**: Plant uptime is {hydro_stats['uptime_percent']:.1f}%, so actual availability varies
         """)
@@ -640,11 +611,11 @@ if run_simulation:
     # Pre-simulation validation
     if enable_overclocking:
         # With overclocking, we test up to standard mode capacity but can run fewer in overclock mode
-        max_possible_asics = int(net_max_power_kw / (asic_hashrate * asic_power / 1000)) if asic_hashrate * asic_power > 0 else 0
-        max_possible_asics_oc = int(net_max_power_kw / (asic_hashrate_oc * asic_power_oc / 1000)) if asic_hashrate_oc * asic_power_oc > 0 else 0
+        max_possible_asics = int(hydro_stats['max_power_kw'] / (asic_hashrate * asic_power / 1000)) if asic_hashrate * asic_power > 0 else 0
+        max_possible_asics_oc = int(hydro_stats['max_power_kw'] / (asic_hashrate_oc * asic_power_oc / 1000)) if asic_hashrate_oc * asic_power_oc > 0 else 0
         st.info(f"🔧 **Fleet Size Testing Range**: Will test 1 to {max_possible_asics} ASICs (max {max_possible_asics_oc} in pure overclock mode)")
     else:
-        max_possible_asics = int(net_max_power_kw / (asic_hashrate * asic_power / 1000)) if asic_hashrate * asic_power > 0 else 0
+        max_possible_asics = int(hydro_stats['max_power_kw'] / (asic_hashrate * asic_power / 1000)) if asic_hashrate * asic_power > 0 else 0
     
     # Show estimated runtime now that we have max_possible_asics
     estimated_time = (n_simulations * len(range(fleet_step, max_possible_asics + 1, fleet_step))) / 50000
@@ -700,8 +671,7 @@ if run_simulation:
                 projection_years=projection_years,
                 pool_fee=pool_fee,
                 discount_rate=discount_rate,
-                additional_upfront_costs=additional_upfront_costs,
-                parasitic_load_kw=parasitic_load_kw
+                additional_upfront_costs=additional_upfront_costs
             )
             
             progress_bar.progress(0.9)
