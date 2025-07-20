@@ -280,7 +280,7 @@ def _precompute_simulation_parameters(projection_years, btc_data, scenario_param
     
     return daily_difficulty, daily_price, daily_block_reward
 
-def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate, pool_fee, additional_upfront_costs):
+def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_params, btc_data, hydro_stats, projection_years, annual_opex, discount_rate, pool_fee, additional_upfront_costs, parasitic_load_kw=0):
     """
     Helper function to run a single vectorized simulation for all fleet sizes.
     This version is optimized to remove daily loops and use matrix operations.
@@ -296,10 +296,13 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
         projection_years, btc_data, scenario_params, sim_seed
     )
     simulated_power = simulate_power_availability(hydro_stats, n_days, seed=sim_seed)
+    
+    # Apply parasitic load to simulated power
+    net_simulated_power = np.maximum(0, simulated_power - parasitic_load_kw)
 
     # 2. Full Vectorization Across Days AND Fleet Sizes
     # Reshape daily arrays for broadcasting against fleet arrays
-    simulated_power_col = simulated_power[:, np.newaxis]
+    simulated_power_col = net_simulated_power[:, np.newaxis]
     daily_difficulty_col = daily_difficulty[:, np.newaxis]
     daily_price_col = daily_price[:, np.newaxis]
     daily_block_reward_col = daily_block_reward[:, np.newaxis]
@@ -309,7 +312,7 @@ def _run_single_simulation(sim_seed, fleet_sizes_arr, asic_specs, scenario_param
     fleet_hashrate_row = fleet_sizes_arr * asic_hashrate
 
     # 3. Enhanced Power Management with Overclocking Support
-    power_mask = simulated_power > 0
+    power_mask = net_simulated_power > 0
     
     if asic_specs.get('enable_overclocking', False) and ENHANCED_THROTTLING_AVAILABLE:
         # Use enhanced throttling that supports overclocking
@@ -392,7 +395,7 @@ def calculate_irr(cash_flows):
             return np.nan  # No valid IRR exists
 
 def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex, 
-                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee, discount_rate, additional_upfront_costs):
+                             n_simulations, fleet_step, scenario_params, projection_years, pool_fee, discount_rate, additional_upfront_costs, parasitic_load_kw=0):
     """Run Monte Carlo simulation for different fleet sizes."""
     import streamlit as st
 
@@ -400,13 +403,16 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
     asic_power_kw = asic_specs['power_consumption_kw']
     asic_price = asic_specs['unit_price']
     
+    # Account for parasitic loads
+    net_max_power_kw = max(0, hydro_stats['max_power_kw'] - parasitic_load_kw)
+    
     # Determine maximum fleet size based on overclocking capability
     if asic_specs.get('enable_overclocking', False):
         # When overclocking is enabled, limit fleet size to what can run in overclock mode
         # This gives more realistic and optimal results
         asic_power_kw_oc = asic_specs['power_consumption_kw_oc']
-        max_fleet_oc = int(hydro_stats['max_power_kw'] / asic_power_kw_oc)
-        max_fleet_standard = int(hydro_stats['max_power_kw'] / asic_power_kw)
+        max_fleet_oc = int(net_max_power_kw / asic_power_kw_oc) if asic_power_kw_oc > 0 else 0
+        max_fleet_standard = int(net_max_power_kw / asic_power_kw) if asic_power_kw > 0 else 0
         
         # Use the overclock limit as the practical maximum for optimization
         # This prevents testing unrealistic fleet sizes that would never achieve good utilization
@@ -417,9 +423,10 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
         - Max fleet in standard mode: {max_fleet_standard} ASICs
         - Max fleet in overclock mode: {max_fleet_oc} ASICs
         - **Testing range**: 1 to {max_fleet} ASICs (overclock-optimized)
+        - **Net power available**: {net_max_power_kw:.1f} kW (after {parasitic_load_kw:.1f} kW parasitic load)
         """)
     else:
-        max_fleet = int(hydro_stats['max_power_kw'] / asic_power_kw)
+        max_fleet = int(net_max_power_kw / asic_power_kw) if asic_power_kw > 0 else 0
     
     fleet_sizes = list(range(fleet_step, max_fleet + 1, fleet_step))
 
@@ -449,7 +456,8 @@ def run_monte_carlo_simulation(hydro_stats, btc_data, asic_specs, annual_opex,
             annual_opex=annual_opex,
             discount_rate=discount_rate,
             pool_fee=pool_fee,
-            additional_upfront_costs=additional_upfront_costs
+            additional_upfront_costs=additional_upfront_costs,
+            parasitic_load_kw=parasitic_load_kw
         ) for i in range(n_simulations)
     )
 
