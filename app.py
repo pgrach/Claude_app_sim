@@ -35,6 +35,9 @@ def get_hydro_analysis():
 def get_btc_data():
     return load_btc_data('btc_price.csv', 'btc_difficulty.csv')
 
+# Clear cache if needed (uncomment the next line and reload if you see cache-related errors)
+# get_btc_data.clear()
+
 # Initialize session state
 if 'simulation_results' not in st.session_state:
     st.session_state.simulation_results = None
@@ -50,6 +53,12 @@ with st.sidebar:
     # Load default config and data
     config = load_config()
     btc_data = get_btc_data()
+    
+    # Clear cache if old format is detected (missing data_date)
+    if 'data_date' not in btc_data:
+        st.info("🔄 Updating data format... Please refresh the page.")
+        get_btc_data.clear()
+        st.stop()
     
     # Quick Start Guide
     with st.expander("🚀 Quick Start Guide", expanded=False):
@@ -488,10 +497,13 @@ with col2:
     current_btc_price = btc_data['current_price']
     current_difficulty = btc_data['current_difficulty']
     current_revenue_per_th = btc_data['current_revenue_per_th']
-    data_date = btc_data['data_date']
+    data_date = btc_data.get('data_date')  # Use .get() for fallback
     
     # Add actual data date info
-    st.caption(f"📅 Data as of: {data_date.strftime('%B %d, %Y')} (latest available)")
+    if data_date:
+        st.caption(f"📅 Data as of: {data_date.strftime('%B %d, %Y')} (latest available)")
+    else:
+        st.caption(f"📅 Data as of: {datetime.now().strftime('%B %d, %Y')} (cached data)")
     
     metrics_col1, metrics_col2 = st.columns(2)
     with metrics_col1:
