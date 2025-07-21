@@ -488,9 +488,10 @@ with col2:
     current_btc_price = btc_data['current_price']
     current_difficulty = btc_data['current_difficulty']
     current_revenue_per_th = btc_data['current_revenue_per_th']
+    data_date = btc_data['data_date']
     
-    # Add current date info
-    st.caption(f"📅 Data as of: {datetime.now().strftime('%B %d, %Y')}")
+    # Add actual data date info
+    st.caption(f"📅 Data as of: {data_date.strftime('%B %d, %Y')} (latest available)")
     
     metrics_col1, metrics_col2 = st.columns(2)
     with metrics_col1:

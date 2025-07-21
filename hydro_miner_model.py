@@ -101,6 +101,7 @@ def load_btc_data(price_file, difficulty_file):
         'current_price': current['Close'],
         'current_difficulty': current['Difficulty'],
         'current_revenue_per_th': current['revenue_per_th_day'],
+        'data_date': current['Date'],  # Add the actual date of the data
         'price_growth_annual': price_growth_annual,
         'difficulty_growth_annual': difficulty_growth_annual,
         'price_volatility_annual': price_volatility_annual,
