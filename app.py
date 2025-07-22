@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 import yaml
 from datetime import datetime, timedelta
-import openpyxl
 from hydro_miner_model import (
     load_hydro_data, load_btc_data, analyze_power_profile,
     run_monte_carlo_simulation, calculate_optimal_fleet,
@@ -28,7 +27,7 @@ def load_config():
 # Load data functions
 @st.cache_data
 def get_hydro_analysis():
-    hydro_data = load_hydro_data('hydro_flow.xlsx')
+    hydro_data = load_hydro_data('hydro_flow.csv')
     return analyze_power_profile(hydro_data)
 
 @st.cache_data

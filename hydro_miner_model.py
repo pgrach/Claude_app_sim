@@ -14,8 +14,8 @@ except ImportError:
     ENHANCED_THROTTLING_AVAILABLE = False
 
 def load_hydro_data(filepath):
-    """Load and process hydroelectric power data from Excel file."""
-    df = pd.read_excel(filepath)
+    """Load and process hydroelectric power data from CSV file."""
+    df = pd.read_csv(filepath)
     
     # Convert date column
     df['Date'] = pd.to_datetime(df['Date'])
