@@ -1,6 +1,25 @@
 # Hydro Bitcoin Mining Optimizer Configuration
 
-# ASIC Specifications
+# ASIC Model Presets
+asic_models:
+  m63s:
+    model: "Whatsminer M63s++ Hydro"
+    hash_rate_th: 460
+    watts_per_th: 15.5
+    price_usd_per_th: 14.9
+    # Overclocking specs for M63s
+    hash_rate_th_oc: 562.5
+    watts_per_th_oc: 18.7
+  m33s:
+    model: "Whatsminer M33s++ Hydro"
+    hash_rate_th: 242
+    watts_per_th: 30.0
+    price_usd_per_th: 3.2
+    # Overclocking specs calculated proportionally to M63s (22.28% hashrate increase, 20.65% power increase)
+    hash_rate_th_oc: 295.9
+    watts_per_th_oc: 36.2
+
+# ASIC Specifications (default to M63s for backward compatibility)
 asic:
   model: "Whatsminer M63s++ Hydro"
   hash_rate_th: 460
