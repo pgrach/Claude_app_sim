@@ -72,11 +72,26 @@ with st.sidebar:
         """)
     
     st.subheader("🔧 ASIC Specifications")
-    asic_model = st.text_input(
-        "Model", 
-        value=config['asic']['model'],
-        help="ASIC miner model name for reference"
+    
+    # Model selection dropdown
+    model_options = {
+        "Whatsminer M63s++ Hydro": "m63s",
+        "Whatsminer M33s++ Hydro": "m33s"
+    }
+    
+    selected_model_name = st.selectbox(
+        "Model",
+        options=list(model_options.keys()),
+        index=0,
+        help="Select ASIC miner model"
     )
+    
+    # Get the selected model configuration
+    selected_model_key = model_options[selected_model_name]
+    selected_model_config = config['asic_models'][selected_model_key]
+    
+    # Store the model name for reference
+    asic_model = selected_model_config['model']
     
     # Overclocking capability toggle
     enable_overclocking = st.checkbox(
@@ -93,13 +108,13 @@ with st.sidebar:
             st.markdown("**Standard Mode**")
             asic_hashrate = st.number_input(
                 "Base Hashrate (TH/s)", 
-                value=config['asic']['hash_rate_th'], 
+                value=selected_model_config['hash_rate_th'], 
                 min_value=1,
                 help="Standard mining speed in terahashes per second"
             )
             asic_power = st.number_input(
                 "Base Power per TH (W)", 
-                value=config['asic']['watts_per_th'], 
+                value=selected_model_config['watts_per_th'], 
                 min_value=1.0,
                 help="Standard power consumption per terahash"
             )
@@ -108,13 +123,13 @@ with st.sidebar:
             st.markdown("**Overclocked Mode**")
             asic_hashrate_oc = st.number_input(
                 "OC Hashrate (TH/s)", 
-                value=562.5,  # Your overclocked specs
+                value=selected_model_config['hash_rate_th_oc'],
                 min_value=float(asic_hashrate),
                 help="Overclocked mining speed in terahashes per second"
             )
             asic_power_oc = st.number_input(
                 "OC Power per TH (W)", 
-                value=18.7,  # Your overclocked specs
+                value=selected_model_config['watts_per_th_oc'],
                 min_value=1.0,
                 help="Overclocked power consumption per terahash"
             )
@@ -123,14 +138,14 @@ with st.sidebar:
         with col_hash:
             asic_hashrate = st.number_input(
                 "Hashrate (TH/s)", 
-                value=config['asic']['hash_rate_th'], 
+                value=selected_model_config['hash_rate_th'], 
                 min_value=1,
                 help="Mining speed in terahashes per second"
             )
         with col_power:
             asic_power = st.number_input(
                 "Power per TH (W)", 
-                value=config['asic']['watts_per_th'], 
+                value=selected_model_config['watts_per_th'], 
                 min_value=1.0,
                 help="Power consumption per terahash"
             )
@@ -141,7 +156,7 @@ with st.sidebar:
     
     asic_price = st.number_input(
         "Price per TH ($)", 
-        value=config['asic']['price_usd_per_th'], 
+        value=selected_model_config['price_usd_per_th'], 
         min_value=1.0,
         help="Cost per terahash of mining equipment"
     )
